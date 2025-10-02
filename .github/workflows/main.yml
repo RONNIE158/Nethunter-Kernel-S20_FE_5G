@@ -12,7 +12,7 @@ jobs :
   build:
     runs-on: ubuntu-22.04
     env:
-      PATCH_REPO: https://github.com/Linux-on-droid/lindroid-drm-loopback
+      PATCH_REPO: Linux-on-droid/lindroid-drm-loopback
 
     steps:
       - name: Checkout Kernel Source
