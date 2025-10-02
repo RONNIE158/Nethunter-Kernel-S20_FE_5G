@@ -36,7 +36,8 @@ jobs:
           fi
 
           rm -rf drivers/lindroid-drm
-          cp -r $PARENT_DIR/drm-dkms/* drivers/lindroid-drm
+          mkdir -p drivers/lindroid-drm   # ✅ bikin folder kosong dulu
+          cp -r $PARENT_DIR/drm-dkms/* drivers/lindroid-drm/
 
       - name: Debug Lindroid DRM
         working-directory: kernel
