@@ -21,66 +21,82 @@ jobs:
           repository: ${{ env.PATCH_REPO }}
           path: drm-dkms
 
-      - name: Build Kernel + Apply Lindroid DRM
+      - name: Apply Lindroid DRM Patch
         working-directory: kernel
         run: |
-          set -e
+          DIR=$(pwd)
+          PARENT_DIR=$(readlink -f ${DIR}/..)
+
+          echo "🔧 Applying Lindroid DRM patch..."
+          if ! grep -q "lindroid-drm" drivers/Makefile; then
+            echo 'obj-y += lindroid-drm/' >> drivers/Makefile
+          fi
+          if ! grep -q "lindroid-drm" drivers/Kconfig; then
+            echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
+          fi
+
+          rm -rf drivers/lindroid-drm
+          cp -r $PARENT_DIR/drm-dkms/* drivers/lindroid-drm
+
+      - name: Debug Lindroid DRM
+        working-directory: kernel
+        run: |
+          ls -R drivers/lindroid-drm || true
+          grep -i "lindroid" drivers/Makefile
+          grep -i "lindroid" drivers/Kconfig
+
+      - name: Kernel Defconfig
+        working-directory: kernel
+        run: |
           DIR=$(pwd)
           PARENT_DIR=$(readlink -f ${DIR}/..)
 
           DEFCONFIG_NAME=wirus_defconfig
-          CHIPSET_NAME=kona
-          VARIANT=r8q
           ARCH=arm64
-          VERSION=Nethunter_WirusMOD_${VARIANT}_v4.0.1
-
-          # === Apply Lindroid DRM Patch ===
-          if [ -d "$PARENT_DIR/drm-dkms" ]; then
-            echo "🔧 Applying Lindroid DRM patch..."
-
-            # Tambahkan entri ke Makefile & Kconfig
-            if ! grep -q "lindroid-drm" drivers/Makefile; then
-              echo 'obj-y += lindroid-drm/' >> drivers/Makefile
-            fi
-            if ! grep -q "lindroid-drm" drivers/Kconfig; then
-              echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
-            fi
-
-            rm -rf drivers/lindroid-drm
-            cp -r $PARENT_DIR/drm-dkms/* drivers/lindroid-drm
-          fi
-
-          echo "=== Debug Lindroid DRM ==="
-          ls -R drivers/lindroid-drm || true
-          grep -i "lindroid" drivers/Makefile
-          grep -i "lindroid" drivers/Kconfig
+          VERSION=Nethunter_WirusMOD_r8q_v4.0.1
 
           BUILD_CROSS_COMPILE=$DIR/toolchain/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
           KERNEL_LLVM_BIN=$DIR/toolchain/llvm-arm-toolchain-ship/10.0/bin/clang
           CLANG_TRIPLE=aarch64-linux-gnu-
           KERNEL_MAKE_ENV="DTC_EXT=$(pwd)/tools/dtc CONFIG_BUILD_ARM64_DT_OVERLAY=y LOCALVERSION=-${VERSION}"
 
-          DTS_DIR=$PARENT_DIR/out/arch/$ARCH/boot/dts
-
-          # Compile kernel:
           [ ! -d "$PARENT_DIR/out" ] && mkdir $PARENT_DIR/out
-
           make -j$(nproc) -C $(pwd) O=$PARENT_DIR/out $KERNEL_MAKE_ENV \
-            ARCH=arm64 CROSS_COMPILE=$BUILD_CROSS_COMPILE REAL_CC=$KERNEL_LLVM_BIN \
-            CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN $DEFCONFIG_NAME 2>&1 | tee $PARENT_DIR/out/build.log
+            ARCH=$ARCH CROSS_COMPILE=$BUILD_CROSS_COMPILE REAL_CC=$KERNEL_LLVM_BIN \
+            CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN $DEFCONFIG_NAME
+
+      - name: Build Kernel
+        working-directory: kernel
+        run: |
+          DIR=$(pwd)
+          PARENT_DIR=$(readlink -f ${DIR}/..)
+
+          BUILD_CROSS_COMPILE=$DIR/toolchain/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
+          KERNEL_LLVM_BIN=$DIR/toolchain/llvm-arm-toolchain-ship/10.0/bin/clang
+          CLANG_TRIPLE=aarch64-linux-gnu-
+          KERNEL_MAKE_ENV="DTC_EXT=$(pwd)/tools/dtc CONFIG_BUILD_ARM64_DT_OVERLAY=y LOCALVERSION=-Nethunter_WirusMOD_r8q_v4.0.1"
 
           make -j$(nproc) -C $(pwd) O=$PARENT_DIR/out $KERNEL_MAKE_ENV \
             ARCH=arm64 CROSS_COMPILE=$BUILD_CROSS_COMPILE REAL_CC=$KERNEL_LLVM_BIN \
             CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN 2>&1 | tee -a $PARENT_DIR/out/build.log
 
-          # Cek apakah driver berhasil dikompilasi
-          if grep -q "drivers/lindroid-drm/" $PARENT_DIR/out/build.log; then
+      - name: Check Lindroid DRM Build
+        run: |
+          if grep -q "drivers/lindroid-drm/" out/build.log; then
             echo "✅ Lindroid DRM built successfully"
           else
             echo "⚠️ Lindroid DRM NOT built (check config or source)"
           fi
 
-          # Generate boot.img
+      - name: Pack Boot Image + DTB
+        working-directory: kernel
+        run: |
+          DIR=$(pwd)
+          PARENT_DIR=$(readlink -f ${DIR}/..)
+          CHIPSET_NAME=kona
+          VARIANT=r8q
+          DTS_DIR=$PARENT_DIR/out/arch/arm64/boot/dts
+
           [ -e $PARENT_DIR/out/arch/arm64/boot/Image.gz ] && cp $PARENT_DIR/out/arch/arm64/boot/Image.gz $PARENT_DIR/out/Image.gz
           if [ -e $PARENT_DIR/out/arch/arm64/boot/Image.gz-dtb ]; then
             cp $PARENT_DIR/out/arch/arm64/boot/Image.gz-dtb $PARENT_DIR/out/Image.gz-dtb
@@ -90,9 +106,15 @@ jobs:
             $(pwd)/tools/mkdtimg create $PARENT_DIR/out/dtbo.img --page_size=4096 ${DTBO_FILES}
           fi
 
-          # Create flashable zip:
+      - name: Create Flashable Zip
+        working-directory: kernel
+        run: |
+          DIR=$(pwd)
+          PARENT_DIR=$(readlink -f ${DIR}/..)
+          VARIANT=r8q
+          VERSION=Nethunter_WirusMOD_${VARIANT}_v4.0.1
+
           if [ ! -d $PARENT_DIR/AnyKernel3 ]; then
-            echo "Copy AnyKernel3 to Parent DIR - Flashable Zip Template"
             cp -rf ${DIR}/AnyKernel3 $PARENT_DIR/AnyKernel3
           fi
 
@@ -101,22 +123,19 @@ jobs:
             cp $PARENT_DIR/out/arch/arm64/boot/Image.gz-dtb $PARENT_DIR/AnyKernel3/zImage
           elif [ -e $PARENT_DIR/out/arch/arm64/boot/Image.gz ]; then
             cp $PARENT_DIR/out/arch/arm64/boot/Image.gz $PARENT_DIR/AnyKernel3/zImage
-          else
-            echo "Error"
           fi
-          cd $PARENT_DIR/AnyKernel3
 
+          cd $PARENT_DIR/AnyKernel3
           mkdir -p $PARENT_DIR/build/$VARIANT/modules
           zip -r9 $PARENT_DIR/build/$VARIANT/${VERSION}.zip * -x .git README.md *placeholder
 
-          # === Collect artifacts for GitHub Actions ===
-          ARTIFACTS_DIR=$PARENT_DIR/artifacts
-          mkdir -p $ARTIFACTS_DIR
-
-          cp -vf $PARENT_DIR/out/Image.gz* $ARTIFACTS_DIR/ || true
-          cp -vf $PARENT_DIR/out/dtb.img $ARTIFACTS_DIR/ || true
-          cp -vf $PARENT_DIR/out/dtbo.img $ARTIFACTS_DIR/ || true
-          cp -vf $PARENT_DIR/build/$VARIANT/*.zip $ARTIFACTS_DIR/ || true
+      - name: Collect Artifacts
+        run: |
+          mkdir -p artifacts
+          cp -vf out/Image.gz* artifacts/ || true
+          cp -vf out/dtb.img artifacts/ || true
+          cp -vf out/dtbo.img artifacts/ || true
+          cp -vf build/r8q/*.zip artifacts/ || true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
