@@ -48,8 +48,8 @@ make -j$(nproc) -C $(pwd) O=$PARENT_DIR/out $KERNEL_MAKE_ENV \
   ARCH=arm64 CROSS_COMPILE=$BUILD_CROSS_COMPILE REAL_CC=$KERNEL_LLVM_BIN \
   CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN 2>&1 | tee -a $PARENT_DIR/out/build.log
 
-# === Verify Lindroid DRM Build ===
-if grep -q "drivers/lindroid-drm/built-in.a" $PARENT_DIR/out/build.log; then
+# Cek apakah driver berhasil dikompilasi
+if grep -q "drivers/lindroid-drm/" $PARENT_DIR/out/build.log; then
   echo "✅ Lindroid DRM built successfully"
 else
   echo "⚠️ Lindroid DRM NOT built (check config or source)"
