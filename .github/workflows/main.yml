@@ -18,13 +18,18 @@ jobs:
 
       - name: Setup Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            bc bison build-essential curl flex git \
-            libncurses5 libncurses5-dev libssl-dev \
-            zip unzip python-is-python3 ccache \
-            gcc clang llvm lld dos2unix \
-            libtinfo5
+          sudo apt update -y && sudo apt upgrade -y
+          sudo apt install -y \
+            nano bc bison ca-certificates curl flex gcc git \
+            libc6-dev libssl-dev openssl python-is-python3 ssh wget zip zstd sudo make \
+            clang gcc-arm-linux-gnueabi software-properties-common build-essential \
+            libarchive-tools gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            libssl-dev libffi-dev libncurses5-dev zlib1g zlib1g-dev \
+            libreadline-dev libbz2-dev libsqlite3-dev \
+            pigz python2 python3 cpio lld llvm libtinfo5 lz4 neofetch
+          
+          # cek environment
+          neofetch
           # convert Kconfig file biar gak error CRLF
           dos2unix init/Kconfig || true
           dos2unix drivers/perf_mgr/Kconfig || true
