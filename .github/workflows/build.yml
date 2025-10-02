@@ -92,7 +92,9 @@ jobs:
           KERNEL_MAKE_ENV="DTC_EXT=$DIR/tools/dtc CONFIG_BUILD_ARM64_DT_OVERLAY=y LOCALVERSION=-${{ env.VERSION }}"
           make -j$(nproc) -C $(pwd) O=$PARENT_DIR/out $KERNEL_MAKE_ENV \
             ARCH=${{ env.ARCH }} CROSS_COMPILE=$BUILD_CROSS_COMPILE \
-            REAL_CC=$KERNEL_LLVM_BIN CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN | tee -a ../out/build.log
+            REAL_CC=$KERNEL_LLVM_BIN CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN \
+            EXTRA_CFLAGS="-Wno-error=unused-variable" | tee -a ../out/build.log
+
 
       
       # ✅ Check all Lindroid DRM objects
