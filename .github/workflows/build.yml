@@ -5,148 +5,154 @@ on:
 
 env:
   PATCH_REPO: Linux-on-droid/lindroid-drm-loopback
+  VARIANT: r8q
+  CHIPSET_NAME: kona
+  DEFCONFIG_NAME: wirus_defconfig
+  ARCH: arm64
+  VERSION: Nethunter_WirusMOD_r8q_v4.0.1
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
+      # 1️⃣ Checkout Kernel Source
       - name: Checkout Kernel Source
         uses: actions/checkout@v3
         with:
           path: kernel
 
+      # 2️⃣ Checkout Lindroid DRM Patch
       - name: Checkout Lindroid DRM Patch
         uses: actions/checkout@v3
         with:
           repository: ${{ env.PATCH_REPO }}
           path: drm-dkms
 
+      # 3️⃣ Setup Dependencies
       - name: Setup Dependencies
         run: |
+          echo "🔧 Updating and installing dependencies..."
           sudo apt update -y && sudo apt upgrade -y
-          sudo apt install -y \
-            nano bc bison ca-certificates curl flex gcc git \
+          sudo apt install -y nano bc bison ca-certificates curl flex gcc git \
             libc6-dev libssl-dev openssl python-is-python3 ssh wget zip zstd sudo make \
             clang gcc-arm-linux-gnueabi software-properties-common build-essential \
             libarchive-tools gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
             libssl-dev libffi-dev libncurses5-dev zlib1g zlib1g-dev \
-            libreadline-dev libbz2-dev libsqlite3-dev \
-            pigz python2 python3 cpio lld llvm libtinfo5 lz4 neofetch \
-            dos2unix
-          
-          # cek environment
-          neofetch
-          # convert Kconfig file biar gak error CRLF
-          dos2unix init/Kconfig || true
-          dos2unix drivers/perf_mgr/Kconfig || true   
+            libreadline-dev libbz2-dev libsqlite3-dev pigz python2 python3 cpio \
+            lld llvm libtinfo5 lz4 dos2unix
 
+      # 4️⃣ Apply Lindroid DRM Patch
       - name: Apply Lindroid DRM Patch
         working-directory: kernel
         run: |
           echo "🔧 Applying Lindroid DRM patch..."
-          if ! grep -q "lindroid-drm" drivers/Makefile; then
-            echo 'obj-y += lindroid-drm/' >> drivers/Makefile
-          fi
-          if ! grep -q "lindroid-drm" drivers/Kconfig; then
-            echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
-          fi
-
+          # Tambahkan Makefile / Kconfig jika belum ada
+          grep -qxF 'obj-y += lindroid-drm/' drivers/Makefile || echo 'obj-y += lindroid-drm/' >> drivers/Makefile
+          grep -qxF 'source "drivers/lindroid-drm/Kconfig"' drivers/Kconfig || echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
+          # Copy source patch
           rm -rf drivers/lindroid-drm
           mkdir -p drivers/lindroid-drm
           cp -r ../drm-dkms/* drivers/lindroid-drm/
 
+      # 5️⃣ Debug Lindroid DRM
       - name: Debug Lindroid DRM
         working-directory: kernel
         run: |
           echo "=== DEBUG: drivers/lindroid-drm ==="
           ls -R drivers/lindroid-drm || true
-          grep -i "lindroid" drivers/Makefile
-          grep -i "lindroid" drivers/Kconfig
+          grep -i "lindroid" drivers/Makefile || true
+          grep -i "lindroid" drivers/Kconfig || true
 
+      # 6️⃣ Build Kernel (Defconfig)
       - name: Kernel Defconfig
         working-directory: kernel
         run: |
-          DEFCONFIG_NAME=wirus_defconfig
-          ARCH=arm64
-          VERSION=Nethunter_WirusMOD_r8q_v4.0.1
-
-          BUILD_CROSS_COMPILE=$PWD/toolchain/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
-          KERNEL_LLVM_BIN=$PWD/toolchain/llvm-arm-toolchain-ship/10.0/bin/clang
+          echo "🛠️ Setting up kernel defconfig..."
+          DIR=$(pwd)
+          PARENT_DIR=$(readlink -f ${DIR}/..)
+          BUILD_CROSS_COMPILE=$DIR/toolchain/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
+          KERNEL_LLVM_BIN=$DIR/toolchain/llvm-arm-toolchain-ship/10.0/bin/clang
           CLANG_TRIPLE=aarch64-linux-gnu-
-          KERNEL_MAKE_ENV="DTC_EXT=$PWD/tools/dtc CONFIG_BUILD_ARM64_DT_OVERLAY=y LOCALVERSION=-${VERSION}"
+          KERNEL_MAKE_ENV="DTC_EXT=$DIR/tools/dtc CONFIG_BUILD_ARM64_DT_OVERLAY=y LOCALVERSION=-${{ env.VERSION }}"
+          [ ! -d "$PARENT_DIR/out" ] && mkdir $PARENT_DIR/out
+          make -j$(nproc) -C $(pwd) O=$PARENT_DIR/out $KERNEL_MAKE_ENV \
+            ARCH=${{ env.ARCH }} CROSS_COMPILE=$BUILD_CROSS_COMPILE \
+            REAL_CC=$KERNEL_LLVM_BIN CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN ${{ env.DEFCONFIG_NAME }}
 
-          mkdir -p ../out
-          make -j$(nproc) -C $PWD O=../out $KERNEL_MAKE_ENV \
-            ARCH=$ARCH CROSS_COMPILE=$BUILD_CROSS_COMPILE REAL_CC=$KERNEL_LLVM_BIN \
-            CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN $DEFCONFIG_NAME
-
-      - name: Build Kernel
+      # 7️⃣ Build Kernel (Compile)
+      - name: Compile Kernel
         working-directory: kernel
         run: |
-          BUILD_CROSS_COMPILE=$PWD/toolchain/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
-          KERNEL_LLVM_BIN=$PWD/toolchain/llvm-arm-toolchain-ship/10.0/bin/clang
+          echo "🚀 Building kernel..."
+          DIR=$(pwd)
+          PARENT_DIR=$(readlink -f ${DIR}/..)
+          BUILD_CROSS_COMPILE=$DIR/toolchain/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
+          KERNEL_LLVM_BIN=$DIR/toolchain/llvm-arm-toolchain-ship/10.0/bin/clang
           CLANG_TRIPLE=aarch64-linux-gnu-
-          KERNEL_MAKE_ENV="DTC_EXT=$PWD/tools/dtc CONFIG_BUILD_ARM64_DT_OVERLAY=y LOCALVERSION=-Nethunter_WirusMOD_r8q_v4.0.1"
+          KERNEL_MAKE_ENV="DTC_EXT=$DIR/tools/dtc CONFIG_BUILD_ARM64_DT_OVERLAY=y LOCALVERSION=-${{ env.VERSION }}"
+          make -j$(nproc) -C $(pwd) O=$PARENT_DIR/out $KERNEL_MAKE_ENV \
+            ARCH=${{ env.ARCH }} CROSS_COMPILE=$BUILD_CROSS_COMPILE \
+            REAL_CC=$KERNEL_LLVM_BIN CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN | tee -a ../out/build.log
 
-          make -j$(nproc) -C $PWD O=../out $KERNEL_MAKE_ENV \
-            ARCH=arm64 CROSS_COMPILE=$BUILD_CROSS_COMPILE REAL_CC=$KERNEL_LLVM_BIN \
-            CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN 2>&1 | tee -a ../out/build.log
-
+      # 8️⃣ Check Lindroid DRM Build
       - name: Check Lindroid DRM Build
         run: |
+          echo "🔍 Checking Lindroid DRM build..."
           if grep -q "drivers/lindroid-drm/" out/build.log; then
             echo "✅ Lindroid DRM built successfully"
           else
             echo "⚠️ Lindroid DRM NOT built (check config or source)"
           fi
 
-      - name: Pack Boot Image + DTB
+      # 9️⃣ Generate Boot Image and DTBO
+      - name: Generate Boot Image and DTBO
         working-directory: kernel
         run: |
-          CHIPSET_NAME=kona
-          VARIANT=r8q
-          DTS_DIR=../out/arch/arm64/boot/dts
-
-          [ -e ../out/arch/arm64/boot/Image.gz ] && cp ../out/arch/arm64/boot/Image.gz ../out/Image.gz
-          if [ -e ../out/arch/arm64/boot/Image.gz-dtb ]; then
-            cp ../out/arch/arm64/boot/Image.gz-dtb ../out/Image.gz-dtb
-
-            DTBO_FILES=$(find ${DTS_DIR}/samsung/ -name ${CHIPSET_NAME}-sec-${VARIANT}-*-r*.dtbo)
-            cat ${DTS_DIR}/vendor/qcom/*.dtb > ../out/dtb.img
-            $PWD/tools/mkdtimg create ../out/dtbo.img --page_size=4096 ${DTBO_FILES}
+          echo "📦 Generating boot image and dtbo..."
+          DIR=$(pwd)
+          PARENT_DIR=$(readlink -f ${DIR}/..)
+          DTS_DIR=$PARENT_DIR/out/arch/${{ env.ARCH }}/boot/dts
+          [ -e $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz ] && cp $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz $PARENT_DIR/out/Image.gz
+          if [ -e $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz-dtb ]; then
+            cp $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz-dtb $PARENT_DIR/out/Image.gz-dtb
+            DTBO_FILES=$(find ${DTS_DIR}/samsung/ -name ${{ env.CHIPSET_NAME }}-sec-${{ env.VARIANT }}-*-r*.dtbo)
+            cat ${DTS_DIR}/vendor/qcom/*.dtb > $PARENT_DIR/out/dtb.img
+            $DIR/tools/mkdtimg create $PARENT_DIR/out/dtbo.img --page_size=4096 ${DTBO_FILES} || true
           fi
 
-      - name: Create Flashable Zip
+      # 🔟 Create Flashable AnyKernel3 Zip
+      - name: Create Flashable AnyKernel3 Zip
         working-directory: kernel
         run: |
-          VARIANT=r8q
-          VERSION=Nethunter_WirusMOD_${VARIANT}_v4.0.1
-
-          if [ ! -d ../AnyKernel3 ]; then
-            cp -rf AnyKernel3 ../AnyKernel3
+          echo "📦 Creating flashable zip..."
+          DIR=$(pwd)
+          PARENT_DIR=$(readlink -f ${DIR}/..)
+          if [ ! -d $PARENT_DIR/AnyKernel3 ]; then
+            cp -rf $DIR/AnyKernel3 $PARENT_DIR/AnyKernel3
           fi
-
-          [ -e ../${VERSION}.zip ] && rm ../${VERSION}.zip
-          if [ -e ../out/arch/arm64/boot/Image.gz-dtb ]; then
-            cp ../out/arch/arm64/boot/Image.gz-dtb ../AnyKernel3/zImage
-          elif [ -e ../out/arch/arm64/boot/Image.gz ]; then
-            cp ../out/arch/arm64/boot/Image.gz ../AnyKernel3/zImage
+          [ -e $PARENT_DIR/${{ env.VERSION }}.zip ] && rm $PARENT_DIR/${{ env.VERSION }}.zip
+          if [ -e $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz-dtb ]; then
+            cp $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz-dtb $PARENT_DIR/AnyKernel3/zImage
+          elif [ -e $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz ]; then
+            cp $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz $PARENT_DIR/AnyKernel3/zImage
+          else
+            echo "❌ Error: Image not found"
           fi
+          cd $PARENT_DIR/AnyKernel3
+          mkdir -p $PARENT_DIR/build/${{ env.VARIANT }}/modules
+          zip -r9 $PARENT_DIR/build/${{ env.VARIANT }}/${{ env.VERSION }}.zip * -x .git README.md *placeholder
+          cd $DIR
+          find $PARENT_DIR/out/ -name '*.ko' -not -path "$PARENT_DIR/build/*" -exec cp --parents -f '{}' $PARENT_DIR/build/${{ env.VARIANT }}/modules \;
+          mv -f $PARENT_DIR/build/${{ env.VARIANT }}/modules/home/svirusx/out/* $PARENT_DIR/build/${{ env.VARIANT }}/modules || true
 
-          cd ../AnyKernel3
-          mkdir -p ../build/$VARIANT/modules
-          zip -r9 ../build/$VARIANT/${VERSION}.zip * -x .git README.md *placeholder
-
-      - name: Collect Artifacts
-        run: |
-          mkdir -p artifacts
-          cp -vf out/Image.gz* artifacts/ || true
-          cp -vf out/dtb.img artifacts/ || true
-          cp -vf out/dtbo.img artifacts/ || true
-          cp -vf build/r8q/*.zip artifacts/ || true
-
-      - name: Upload artifacts
+      # 1️⃣1️⃣ Upload Artifacts
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Kernel-Build
-          path: artifacts
+          path: |
+            build/${{ env.VARIANT }}/*.zip
+            out/Image.gz*
+            out/dtb.img
+            out/dtbo.img
+          if-no-files-found: ignore
