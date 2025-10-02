@@ -11,6 +11,23 @@ VARIANT=r8q
 ARCH=arm64
 VERSION=Nethunter_WirusMOD_${VARIANT}_v4.0.1
 
+# === Apply Lindroid DRM Patch ===
+if [ -d "$DIR/../drm-dkms" ]; then
+  echo "🔧 Applying Lindroid DRM patch..."
+
+  # Tambahkan entri ke Makefile & Kconfig
+  if ! grep -q "lindroid-drm" drivers/Makefile; then
+    echo 'obj-y += lindroid-drm/' >> drivers/Makefile
+  fi
+  if ! grep -q "lindroid-drm" drivers/Kconfig; then
+    echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
+  fi
+
+  # Copy source ke tree kernel
+  rm -rf drivers/lindroid-drm
+  cp -r $DIR/../drm-dkms drivers/lindroid-drm
+fi
+
 
 BUILD_CROSS_COMPILE=$DIR/toolchain/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
 KERNEL_LLVM_BIN=$DIR/toolchain/llvm-arm-toolchain-ship/10.0/bin/clang
@@ -20,9 +37,23 @@ KERNEL_MAKE_ENV="DTC_EXT=$(pwd)/tools/dtc CONFIG_BUILD_ARM64_DT_OVERLAY=y LOCALV
 DTS_DIR=$PARENT_DIR/out/arch/$ARCH/boot/dts
 
 #Compile kernel:
+#Compile kernel:
 [ ! -d "$PARENT_DIR/out" ] && mkdir $PARENT_DIR/out
-  make -j$(nproc) -C $(pwd) O=$PARENT_DIR/out $KERNEL_MAKE_ENV ARCH=arm64 CROSS_COMPILE=$BUILD_CROSS_COMPILE REAL_CC=$KERNEL_LLVM_BIN CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN $DEFCONFIG_NAME
-  make -j$(nproc) -C $(pwd) O=$PARENT_DIR/out $KERNEL_MAKE_ENV ARCH=arm64 CROSS_COMPILE=$BUILD_CROSS_COMPILE REAL_CC=$KERNEL_LLVM_BIN CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN
+
+make -j$(nproc) -C $(pwd) O=$PARENT_DIR/out $KERNEL_MAKE_ENV \
+  ARCH=arm64 CROSS_COMPILE=$BUILD_CROSS_COMPILE REAL_CC=$KERNEL_LLVM_BIN \
+  CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN $DEFCONFIG_NAME 2>&1 | tee $PARENT_DIR/out/build.log
+
+make -j$(nproc) -C $(pwd) O=$PARENT_DIR/out $KERNEL_MAKE_ENV \
+  ARCH=arm64 CROSS_COMPILE=$BUILD_CROSS_COMPILE REAL_CC=$KERNEL_LLVM_BIN \
+  CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN 2>&1 | tee -a $PARENT_DIR/out/build.log
+
+# === Verify Lindroid DRM Build ===
+if grep -q "drivers/lindroid-drm/built-in.a" $PARENT_DIR/out/build.log; then
+  echo "✅ Lindroid DRM built successfully"
+else
+  echo "⚠️ Lindroid DRM NOT built (check config or source)"
+fi
 
 #Generate boot.img:
  [ -e $PARENT_DIR/out/arch/arm64/boot/Image.gz ] && cp $PARENT_DIR/out/arch/arm64/boot/Image.gz $PARENT_DIR/out/Image.gz
@@ -53,10 +84,6 @@ fi
   mkdir -p $PARENT_DIR/build/$VARIANT/modules
   zip -r9 $PARENT_DIR/build/$VARIANT/${VERSION}.zip * -x .git README.md *placeholder
   cd $DIR
-
-find $PARENT_DIR/out/ -name '*.ko'  -not -path "$PARENT_DIR/build/*" -exec cp --parents -f '{}' $PARENT_DIR/build/$VARIANT/modules  \;
-mv -f $PARENT_DIR/build/$VARIANT/modules/home/svirusx/out/* $PARENT_DIR/build/$VARIANT/modules
-
 
 
 
