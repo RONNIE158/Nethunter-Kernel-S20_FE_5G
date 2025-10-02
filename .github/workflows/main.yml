@@ -21,9 +21,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             bc bison build-essential curl flex git \
-            libncurses5-dev libssl-dev \
+            libncurses5 libncurses5-dev libssl-dev \
             zip unzip python-is-python3 ccache \
-            gcc clang llvm lld
+            gcc clang llvm lld dos2unix
+          # convert Kconfig file biar gak error CRLF
+          dos2unix init/Kconfig || true
+          dos2unix drivers/perf_mgr/Kconfig || true
 
       - name: Build Kernel
         run: |
