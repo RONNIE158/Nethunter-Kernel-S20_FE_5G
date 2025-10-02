@@ -28,6 +28,10 @@ if [ -d "$DIR/../drm-dkms" ]; then
   cp -r $DIR/../drm-dkms drivers/lindroid-drm
 fi
 
+echo "=== Debug Lindroid DRM ==="
+ls -R drivers/lindroid-drm || true
+grep -i "lindroid" drivers/Makefile
+grep -i "lindroid" drivers/Kconfig
 
 BUILD_CROSS_COMPILE=$DIR/toolchain/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
 KERNEL_LLVM_BIN=$DIR/toolchain/llvm-arm-toolchain-ship/10.0/bin/clang
@@ -36,7 +40,6 @@ KERNEL_MAKE_ENV="DTC_EXT=$(pwd)/tools/dtc CONFIG_BUILD_ARM64_DT_OVERLAY=y LOCALV
 
 DTS_DIR=$PARENT_DIR/out/arch/$ARCH/boot/dts
 
-#Compile kernel:
 #Compile kernel:
 [ ! -d "$PARENT_DIR/out" ] && mkdir $PARENT_DIR/out
 
