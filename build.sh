@@ -83,6 +83,17 @@ fi
 
   mkdir -p $PARENT_DIR/build/$VARIANT/modules
   zip -r9 $PARENT_DIR/build/$VARIANT/${VERSION}.zip * -x .git README.md *placeholder
+
+  
+ # === Collect artifacts for GitHub Actions ===
+ARTIFACTS_DIR=$PARENT_DIR/artifacts
+mkdir -p $ARTIFACTS_DIR
+
+cp -vf $PARENT_DIR/out/Image.gz* $ARTIFACTS_DIR/ || true
+cp -vf $PARENT_DIR/out/dtb.img $ARTIFACTS_DIR/ || true
+cp -vf $PARENT_DIR/out/dtbo.img $ARTIFACTS_DIR/ || true
+cp -vf $PARENT_DIR/build/$VARIANT/*.zip $ARTIFACTS_DIR/ || true
+  
   cd $DIR
 
 
