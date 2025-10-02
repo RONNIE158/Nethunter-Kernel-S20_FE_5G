@@ -45,7 +45,6 @@ jobs:
           name: Nethunter-Kernel-S20FE5G
           path: |
             ../build/r8q/*.zip
-            ../build/r8q/modules/**/*.ko
             ../out/Image.gz*
             ../out/dtb.img
             ../out/dtbo.img
