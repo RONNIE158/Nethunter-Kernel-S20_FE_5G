@@ -93,8 +93,6 @@ cp -vf $PARENT_DIR/out/Image.gz* $ARTIFACTS_DIR/ || true
 cp -vf $PARENT_DIR/out/dtb.img $ARTIFACTS_DIR/ || true
 cp -vf $PARENT_DIR/out/dtbo.img $ARTIFACTS_DIR/ || true
 cp -vf $PARENT_DIR/build/$VARIANT/*.zip $ARTIFACTS_DIR/ || true
-  
-  cd $DIR
 
 
 
