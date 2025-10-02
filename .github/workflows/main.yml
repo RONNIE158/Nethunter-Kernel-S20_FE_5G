@@ -23,7 +23,8 @@ jobs:
             bc bison build-essential curl flex git \
             libncurses5 libncurses5-dev libssl-dev \
             zip unzip python-is-python3 ccache \
-            gcc clang llvm lld dos2unix
+            gcc clang llvm lld dos2unix \
+            libtinfo5
           # convert Kconfig file biar gak error CRLF
           dos2unix init/Kconfig || true
           dos2unix drivers/perf_mgr/Kconfig || true
