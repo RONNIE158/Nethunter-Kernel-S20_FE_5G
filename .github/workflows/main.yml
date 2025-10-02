@@ -1,0 +1,42 @@
+name: Build Nethunter Kernel S20 FE 5G
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - lineage-21
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v3
+
+      - name: Setup Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential curl flex git \
+            libncurses5-dev libssl-dev \
+            zip unzip python-is-python3 ccache \
+            gcc clang llvm lld
+
+      - name: Build Kernel
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Upload Kernel Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: Nethunter-Kernel-S20FE5G
+          path: |
+            ../build/r8q/*.zip
+            ../build/r8q/modules/**/*.ko
+            ../out/Image.gz*
+            ../out/dtb.img
+            ../out/dtbo.img
