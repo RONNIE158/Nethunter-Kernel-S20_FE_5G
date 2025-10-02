@@ -1,10 +1,15 @@
-name: Build Kernel with Lindroid DRM 2
+name: Build Kernel with Lindroid DRM
 
 on:
   workflow_dispatch:
 
 env:
   PATCH_REPO: Linux-on-droid/lindroid-drm-loopback
+  VARIANT: r8q
+  CHIPSET_NAME: kona
+  DEFCONFIG_NAME: wirus_defconfig
+  ARCH: arm64
+  VERSION: Nethunter_WirusMOD_r8q_v4.0.1
 
 jobs:
   build:
@@ -29,8 +34,8 @@ jobs:
             clang gcc-arm-linux-gnueabi software-properties-common build-essential \
             libarchive-tools gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
             libssl-dev libffi-dev libncurses5-dev zlib1g zlib1g-dev \
-            libreadline-dev libbz2-dev libsqlite3-dev \
-            pigz python2 python3 cpio lld llvm libtinfo5 lz4 neofetch dos2unix
+            libreadline-dev libbz2-dev libsqlite3-dev pigz python2 python3 cpio \
+            lld llvm libtinfo5 lz4 neofetch dos2unix
 
       - name: Apply Lindroid DRM Patch
         working-directory: kernel
@@ -49,60 +54,77 @@ jobs:
       - name: Build Kernel
         working-directory: kernel
         run: |
-          set -e
           DIR=$(pwd)
           PARENT_DIR=$(readlink -f ${DIR}/..)
-
-          DEFCONFIG_NAME=wirus_defconfig
-          ARCH=arm64
-          VERSION=Nethunter_WirusMOD_r8q_v4.0.1
 
           BUILD_CROSS_COMPILE=$DIR/toolchain/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
           KERNEL_LLVM_BIN=$DIR/toolchain/llvm-arm-toolchain-ship/10.0/bin/clang
           CLANG_TRIPLE=aarch64-linux-gnu-
-          KERNEL_MAKE_ENV="DTC_EXT=$DIR/tools/dtc CONFIG_BUILD_ARM64_DT_OVERLAY=y LOCALVERSION=-${VERSION}"
+          KERNEL_MAKE_ENV="DTC_EXT=$DIR/tools/dtc CONFIG_BUILD_ARM64_DT_OVERLAY=y LOCALVERSION=-${{ env.VERSION }}"
 
           [ ! -d "$PARENT_DIR/out" ] && mkdir $PARENT_DIR/out
-          make -j$(nproc) -C $DIR O=$PARENT_DIR/out $KERNEL_MAKE_ENV \
-            ARCH=$ARCH CROSS_COMPILE=$BUILD_CROSS_COMPILE REAL_CC=$KERNEL_LLVM_BIN \
-            CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN $DEFCONFIG_NAME
-          make -j$(nproc) -C $DIR O=$PARENT_DIR/out $KERNEL_MAKE_ENV \
-            ARCH=$ARCH CROSS_COMPILE=$BUILD_CROSS_COMPILE REAL_CC=$KERNEL_LLVM_BIN \
-            CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN
 
-      - name: Generate AnyKernel3 Zip
+          # Defconfig
+          make -j$(nproc) -C $(pwd) O=$PARENT_DIR/out $KERNEL_MAKE_ENV \
+            ARCH=${{ env.ARCH }} CROSS_COMPILE=$BUILD_CROSS_COMPILE \
+            REAL_CC=$KERNEL_LLVM_BIN CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN ${{ env.DEFCONFIG_NAME }}
+
+          # Build kernel
+          make -j$(nproc) -C $(pwd) O=$PARENT_DIR/out $KERNEL_MAKE_ENV \
+            ARCH=${{ env.ARCH }} CROSS_COMPILE=$BUILD_CROSS_COMPILE \
+            REAL_CC=$KERNEL_LLVM_BIN CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN
+
+      - name: Generate Boot Image and DTBO
         working-directory: kernel
         run: |
           DIR=$(pwd)
           PARENT_DIR=$(readlink -f ${DIR}/..)
-          CHIPSET_NAME=kona
-          VARIANT=r8q
-          DTS_DIR=$PARENT_DIR/out/arch/$ARCH/boot/dts
+          DTS_DIR=$PARENT_DIR/out/arch/${{ env.ARCH }}/boot/dts
 
-          [ ! -d $PARENT_DIR/AnyKernel3 ] && cp -rf $DIR/AnyKernel3 $PARENT_DIR/AnyKernel3
+          [ -e $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz ] && cp $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz $PARENT_DIR/out/Image.gz
 
-          if [ -e $PARENT_DIR/out/arch/arm64/boot/Image.gz-dtb ]; then
-            cp $PARENT_DIR/out/arch/arm64/boot/Image.gz-dtb $PARENT_DIR/AnyKernel3/zImage
-          elif [ -e $PARENT_DIR/out/arch/arm64/boot/Image ]; then
-            gzip -c $PARENT_DIR/out/arch/arm64/boot/Image > $PARENT_DIR/out/arch/arm64/boot/Image.gz
-            cp $PARENT_DIR/out/arch/arm64/boot/Image.gz $PARENT_DIR/AnyKernel3/zImage
-          else
-            echo "Error: kernel Image not found" && exit 1
+          if [ -e $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz-dtb ]; then
+            cp $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz-dtb $PARENT_DIR/out/Image.gz-dtb
+
+            DTBO_FILES=$(find ${DTS_DIR}/samsung/ -name ${{ env.CHIPSET_NAME }}-sec-${{ env.VARIANT }}-*-r*.dtbo)
+            cat ${DTS_DIR}/vendor/qcom/*.dtb > $PARENT_DIR/out/dtb.img
+            $DIR/tools/mkdtimg create $PARENT_DIR/out/dtbo.img --page_size=4096 ${DTBO_FILES}
           fi
 
-          mkdir -p $PARENT_DIR/build/$VARIANT/modules
-          find $PARENT_DIR/out/ -name '*.ko' -not -path "$PARENT_DIR/build/*" \
-            -exec cp --parents -f '{}' $PARENT_DIR/build/$VARIANT/modules \;
-          mv -f $PARENT_DIR/build/$VARIANT/modules/home/svirusx/out/* $PARENT_DIR/build/$VARIANT/modules
+      - name: Create Flashable AnyKernel3 Zip
+        working-directory: kernel
+        run: |
+          DIR=$(pwd)
+          PARENT_DIR=$(readlink -f ${DIR}/..)
+
+          if [ ! -d $PARENT_DIR/AnyKernel3 ]; then
+            cp -rf $DIR/AnyKernel3 $PARENT_DIR/AnyKernel3
+          fi
+
+          [ -e $PARENT_DIR/${{ env.VERSION }}.zip ] && rm $PARENT_DIR/${{ env.VERSION }}.zip
+
+          if [ -e $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz-dtb ]; then
+            cp $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz-dtb $PARENT_DIR/AnyKernel3/zImage
+          elif [ -e $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz ]; then
+            cp $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz $PARENT_DIR/AnyKernel3/zImage
+          else
+            echo "❌ Error: Image not found"
+          fi
 
           cd $PARENT_DIR/AnyKernel3
-          zip -r9 $PARENT_DIR/build/$VARIANT/${VERSION}.zip * -x .git README.md *placeholder
+          mkdir -p $PARENT_DIR/build/${{ env.VARIANT }}/modules
+          zip -r9 $PARENT_DIR/build/${{ env.VARIANT }}/${{ env.VERSION }}.zip * -x .git README.md *placeholder
+
+          cd $DIR
+          find $PARENT_DIR/out/ -name '*.ko' -not -path "$PARENT_DIR/build/*" -exec cp --parents -f '{}' $PARENT_DIR/build/${{ env.VARIANT }}/modules \;
+          mv -f $PARENT_DIR/build/${{ env.VARIANT }}/modules/home/svirusx/out/* $PARENT_DIR/build/${{ env.VARIANT }}/modules || true
 
       - name: Upload Artifacts
-        run: |
-          mkdir -p artifacts
-          cp -vf build/r8q/*.zip artifacts/
         uses: actions/upload-artifact@v4
         with:
           name: Kernel-Build
-          path: artifacts
+          path: |
+            build/${{ env.VARIANT }}/*.zip
+            out/Image.gz*
+            out/dtb.img
+            out/dtbo.img
