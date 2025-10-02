@@ -1,4 +1,4 @@
-name: Build Kernel with Lindroid DRM
+name: Build Kernel with Lindroid DRM 2
 
 on:
   workflow_dispatch:
