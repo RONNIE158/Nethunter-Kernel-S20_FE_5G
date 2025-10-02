@@ -8,13 +8,21 @@ on:
       - lineage-21
       - master
 
-jobs:
+jobs :
   build:
     runs-on: ubuntu-22.04
+    env:
+      PATCH_REPO: https://github.com/Linux-on-droid/lindroid-drm-loopback
 
     steps:
       - name: Checkout Kernel Source
         uses: actions/checkout@v3
+    
+      - name: Checkout Lindroid DRM Patch
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ env.PATCH_REPO }}
+          path: drm-dkms
 
       - name: Setup Dependencies
         run: |
