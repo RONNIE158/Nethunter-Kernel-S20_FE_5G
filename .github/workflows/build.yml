@@ -94,15 +94,41 @@ jobs:
             ARCH=${{ env.ARCH }} CROSS_COMPILE=$BUILD_CROSS_COMPILE \
             REAL_CC=$KERNEL_LLVM_BIN CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN | tee -a ../out/build.log
 
-      # 8️⃣ Check Lindroid DRM Build
-      - name: Check Lindroid DRM Build
+      
+      # ✅ Check all Lindroid DRM objects
+      - name: Verify Lindroid DRM Build
+        working-directory: kernel
         run: |
-          echo "🔍 Checking Lindroid DRM build..."
-          if grep -q "drivers/lindroid-drm/" out/build.log; then
-            echo "✅ Lindroid DRM built successfully"
-          else
-            echo "⚠️ Lindroid DRM NOT built (check config or source)"
-          fi
+         echo "🔍 Verifying Lindroid DRM object files..."
+         PARENT_DIR=$(readlink -f $(pwd)/..)
+         REQUIRED_OBJS=(
+           evdi_fb.o
+           evdi_platform_drv.o
+           evdi_modeset.o
+           evdi_connector.o
+           evdi_encoder.o
+           evdi_drm_drv.o
+           evdi_platform_dev.o
+           evdi_sysfs.o
+         )
+
+         MISSING=0
+         for OBJ in "${REQUIRED_OBJS[@]}"; do
+           FILE=$(find $PARENT_DIR/out/ -name $OBJ || true)
+           if [ -z "$FILE" ]; then
+             echo "⚠️ Missing $OBJ"
+             MISSING=$((MISSING+1))
+           else
+             echo "✅ Found $OBJ at $FILE"
+           fi
+         done
+
+         if [ $MISSING -ne 0 ]; then
+           echo "❌ Some Lindroid DRM objects are missing, check config/patch."
+           exit 1
+         else
+           echo "✅ All Lindroid DRM objects are built successfully."
+         fi
 
       # 9️⃣ Generate Boot Image and DTBO
       - name: Generate Boot Image and DTBO
