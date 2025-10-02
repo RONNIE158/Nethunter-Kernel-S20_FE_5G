@@ -31,7 +31,8 @@ jobs:
             libarchive-tools gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
             libssl-dev libffi-dev libncurses5-dev zlib1g zlib1g-dev \
             libreadline-dev libbz2-dev libsqlite3-dev \
-            pigz python2 python3 cpio lld llvm libtinfo5 lz4 neofetch
+            pigz python2 python3 cpio lld llvm libtinfo5 lz4 neofetch \
+            dos2unix
           
           # cek environment
           neofetch
