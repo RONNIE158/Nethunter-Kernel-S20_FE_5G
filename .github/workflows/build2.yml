@@ -54,6 +54,7 @@ jobs:
       - name: Build Kernel
         working-directory: kernel
         run: |
+          export KCFLAGS="-Wno-error=unused-variable"
           DIR=$(pwd)
           PARENT_DIR=$(readlink -f ${DIR}/..)
 
