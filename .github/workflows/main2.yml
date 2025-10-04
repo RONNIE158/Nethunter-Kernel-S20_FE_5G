@@ -94,6 +94,7 @@ jobs:
         working-directory: kernel
         run: |
           export KCFLAGS="-Wno-error=unused-variable"
+          export CFLAGS_evdi_fb.o="-Wno-error"
           DIR=$(pwd)
           PARENT_DIR=$(readlink -f ${DIR}/..)
 
