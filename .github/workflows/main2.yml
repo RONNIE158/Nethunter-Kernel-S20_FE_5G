@@ -63,15 +63,6 @@ jobs:
           rm -rf drivers/lindroid-drm
           mkdir -p drivers/lindroid-drm
           cp -r ../drm-dkms/* drivers/lindroid-drm/
-
-          # FORCE -Wno-error di Makefile driver
-          MAKEFILE="drivers/lindroid-drm/Makefile"
-          if grep -q '^ccflags-y :=' "$MAKEFILE"; then
-            sed -i '/^ccflags-y :=/ s/$/ -Wno-error/' "$MAKEFILE"
-            echo "Flag -Wno-error added to ccflags-y line"
-          else
-            echo 'ccflags-y += -Wno-error' >> "$MAKEFILE"
-            echo "Line ccflags-y += -Wno-error added"
           fi
 
       - name: Debug Lindroid DRM
@@ -80,15 +71,6 @@ jobs:
         run: |
           echo "=== DEBUG: Lindroid DRM folder content ==="
           ls -R drivers/lindroid-drm || true
-
-          echo "=== DEBUG: ccflags-y in drivers/lindroid-drm/Makefile ==="
-          grep '^ccflags-y' drivers/lindroid-drm/Makefile || echo "⚠️ ccflags-y not found"
-
-          echo "=== DEBUG: drivers/Makefile references ==="
-          grep -i "lindroid" drivers/Makefile || echo "⚠️ No reference to lindroid-drm in drivers/Makefile"
-
-          echo "=== DEBUG: drivers/Kconfig references ==="
-          grep -i "lindroid" drivers/Kconfig || echo "⚠️ No reference to lindroid-drm in drivers/Kconfig"
 
       - name: Build Kernel
         working-directory: kernel
