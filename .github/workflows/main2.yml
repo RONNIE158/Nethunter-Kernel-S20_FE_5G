@@ -1,0 +1,179 @@
+name: Build Kernel with Optional Lindroid DRM
+
+on:
+  workflow_dispatch:
+    inputs:
+      ENABLE_LINDROID_DRM:
+        description: 'Enable Lindroid DRM patch'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+env:
+  PATCH_REPO: Linux-on-droid/lindroid-drm-loopback
+  VARIANT: r8q
+  CHIPSET_NAME: kona
+  DEFCONFIG_NAME: wirus_defconfig
+  ARCH: arm64
+  VERSION: Nethunter_WirusMOD_r8q_v4.0.1
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v3
+        with:
+          path: kernel
+
+      - name: Setup Dependencies
+        run: |
+          sudo apt update -y && sudo apt upgrade -y
+          sudo apt install -y nano bc bison ca-certificates curl flex gcc git \
+            libc6-dev libssl-dev openssl python-is-python3 ssh wget zip zstd sudo make \
+            clang gcc-arm-linux-gnueabi software-properties-common build-essential \
+            libarchive-tools gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            libssl-dev libffi-dev libncurses5-dev zlib1g zlib1g-dev \
+            libreadline-dev libbz2-dev libsqlite3-dev pigz python2 python3 cpio \
+            lld llvm libtinfo5 lz4 neofetch dos2unix
+
+      - name: Apply Lindroid DRM Patch
+        if: ${{ github.event.inputs.ENABLE_LINDROID_DRM == 'true' }}
+        working-directory: kernel
+        run: |
+          echo "🔧 Applying Lindroid DRM patch..."
+          
+          # Checkout Lindroid DRM patch repo
+          if [ ! -d ../drm-dkms ]; then
+            git clone https://github.com/${{ env.PATCH_REPO }} ../drm-dkms
+          fi
+
+          # Tambah obj-y dan Kconfig kalau belum ada
+          if ! grep -q "lindroid-drm" drivers/Makefile; then
+            echo 'obj-y += lindroid-drm/' >> drivers/Makefile
+          fi
+          if ! grep -q "lindroid-drm" drivers/Kconfig; then
+            echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
+          fi
+
+          # Buat folder driver dan copy patch
+          rm -rf drivers/lindroid-drm
+          mkdir -p drivers/lindroid-drm
+          cp -r ../drm-dkms/* drivers/lindroid-drm/
+
+          # FORCE -Wno-error di Makefile driver
+          MAKEFILE="drivers/lindroid-drm/Makefile"
+          if grep -q '^ccflags-y :=' "$MAKEFILE"; then
+            sed -i '/^ccflags-y :=/ s/$/ -Wno-error/' "$MAKEFILE"
+            echo "Flag -Wno-error added to ccflags-y line"
+          else
+            echo 'ccflags-y += -Wno-error' >> "$MAKEFILE"
+            echo "Line ccflags-y += -Wno-error added"
+          fi
+
+      - name: Debug Lindroid DRM
+        if: ${{ github.event.inputs.ENABLE_LINDROID_DRM == 'true' }}
+        working-directory: kernel
+        run: |
+          echo "=== DEBUG: Lindroid DRM folder content ==="
+          ls -R drivers/lindroid-drm || true
+
+          echo "=== DEBUG: ccflags-y in drivers/lindroid-drm/Makefile ==="
+          grep '^ccflags-y' drivers/lindroid-drm/Makefile || echo "⚠️ ccflags-y not found"
+
+          echo "=== DEBUG: drivers/Makefile references ==="
+          grep -i "lindroid" drivers/Makefile || echo "⚠️ No reference to lindroid-drm in drivers/Makefile"
+
+          echo "=== DEBUG: drivers/Kconfig references ==="
+          grep -i "lindroid" drivers/Kconfig || echo "⚠️ No reference to lindroid-drm in drivers/Kconfig"
+
+      - name: Build Kernel
+        working-directory: kernel
+        run: |
+          export KCFLAGS="-Wno-error=unused-variable"
+          DIR=$(pwd)
+          PARENT_DIR=$(readlink -f ${DIR}/..)
+
+          BUILD_CROSS_COMPILE=$DIR/toolchain/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
+          KERNEL_LLVM_BIN=$DIR/toolchain/llvm-arm-toolchain-ship/10.0/bin/clang
+          CLANG_TRIPLE=aarch64-linux-gnu-
+          KERNEL_MAKE_ENV="DTC_EXT=$DIR/tools/dtc CONFIG_BUILD_ARM64_DT_OVERLAY=y LOCALVERSION=-${{ env.VERSION }}"
+
+          [ ! -d "$PARENT_DIR/out" ] && mkdir $PARENT_DIR/out
+
+          # Defconfig
+          make -j$(nproc) -C $(pwd) O=$PARENT_DIR/out $KERNEL_MAKE_ENV \
+            ARCH=${{ env.ARCH }} CROSS_COMPILE=$BUILD_CROSS_COMPILE \
+            REAL_CC=$KERNEL_LLVM_BIN CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN ${{ env.DEFCONFIG_NAME }}
+
+          # Build kernel
+          make -j$(nproc) -C $(pwd) O=$PARENT_DIR/out $KERNEL_MAKE_ENV \
+            ARCH=${{ env.ARCH }} CROSS_COMPILE=$BUILD_CROSS_COMPILE \
+            REAL_CC=$KERNEL_LLVM_BIN CLANG_TRIPLE=$CLANG_TRIPLE CFP_CC=$KERNEL_LLVM_BIN | tee -a ../out/build.log
+
+      - name: Check Lindroid DRM Build
+        if: ${{ github.event.inputs.ENABLE_LINDROID_DRM == 'true' }}
+        run: |
+          if grep -q "drivers/lindroid-drm/" out/build.log; then
+            echo "✅ Lindroid DRM built successfully"
+          else
+            echo "⚠️ Lindroid DRM NOT built (check config or source)"
+          fi
+
+      - name: Generate Boot Image and DTBO
+        working-directory: kernel
+        run: |
+          DIR=$(pwd)
+          PARENT_DIR=$(readlink -f ${DIR}/..)
+          DTS_DIR=$PARENT_DIR/out/arch/${{ env.ARCH }}/boot/dts
+
+          [ -e $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz ] && cp $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz $PARENT_DIR/out/Image.gz
+
+          if [ -e $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz-dtb ]; then
+            cp $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz-dtb $PARENT_DIR/out/Image.gz-dtb
+
+            DTBO_FILES=$(find ${DTS_DIR}/samsung/ -name ${{ env.CHIPSET_NAME }}-sec-${{ env.VARIANT }}-*-r*.dtbo)
+            cat ${DTS_DIR}/vendor/qcom/*.dtb > $PARENT_DIR/out/dtb.img
+            $DIR/tools/mkdtimg create $PARENT_DIR/out/dtbo.img --page_size=4096 ${DTBO_FILES}
+          fi
+
+      - name: Create Flashable AnyKernel3 Zip
+        working-directory: kernel
+        run: |
+          DIR=$(pwd)
+          PARENT_DIR=$(readlink -f ${DIR}/..)
+
+          if [ ! -d $PARENT_DIR/AnyKernel3 ]; then
+            cp -rf $DIR/AnyKernel3 $PARENT_DIR/AnyKernel3
+          fi
+
+          [ -e $PARENT_DIR/${{ env.VERSION }}.zip ] && rm $PARENT_DIR/${{ env.VERSION }}.zip
+
+          if [ -e $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz-dtb ]; then
+            cp $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz-dtb $PARENT_DIR/AnyKernel3/zImage
+          elif [ -e $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz ]; then
+            cp $PARENT_DIR/out/arch/${{ env.ARCH }}/boot/Image.gz $PARENT_DIR/AnyKernel3/zImage
+          else
+            echo "❌ Error: Image not found"
+          fi
+
+          cd $PARENT_DIR/AnyKernel3
+          mkdir -p $PARENT_DIR/build/${{ env.VARIANT }}/modules
+          zip -r9 $PARENT_DIR/build/${{ env.VARIANT }}/${{ env.VERSION }}.zip * -x .git README.md *placeholder
+
+          cd $DIR
+          find $PARENT_DIR/out/ -name '*.ko' -not -path "$PARENT_DIR/build/*" -exec cp --parents -f '{}' $PARENT_DIR/build/${{ env.VARIANT }}/modules \;
+          mv -f $PARENT_DIR/build/${{ env.VARIANT }}/modules/home/svirusx/out/* $PARENT_DIR/build/${{ env.VARIANT }}/modules || true
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-Build
+          path: |
+            build/${{ env.VARIANT }}/*.zip
+            out/Image.gz*
+            out/dtb.img
+            out/dtbo.img
