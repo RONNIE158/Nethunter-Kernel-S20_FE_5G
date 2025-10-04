@@ -63,7 +63,6 @@ jobs:
           rm -rf drivers/lindroid-drm
           mkdir -p drivers/lindroid-drm
           cp -r ../drm-dkms/* drivers/lindroid-drm/
-          fi
 
       - name: Debug Lindroid DRM
         if: ${{ github.event.inputs.ENABLE_LINDROID_DRM == 'true' }}
@@ -76,7 +75,6 @@ jobs:
         working-directory: kernel
         run: |
           export KCFLAGS="-Wno-error=unused-variable"
-          export CFLAGS_evdi_fb.o="-Wno-error"
           DIR=$(pwd)
           PARENT_DIR=$(readlink -f ${DIR}/..)
 
