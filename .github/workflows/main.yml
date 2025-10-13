@@ -1,54 +1,66 @@
-name: Build Nethunter Kernel S20 FE 5G
+name: Kernel Patch Workflow
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
-      - lineage-21
-      - master
+  workflow_dispatch:
 
-jobs :
-  build:
-    runs-on: ubuntu-22.04
-    env:
-      PATCH_REPO: Linux-on-droid/lindroid-drm-loopback
+env:
+  PATCH_REPO: Linux-on-droid/lindroid-drm-loopback
+  KERNEL_DIR: kernel
 
+jobs:
+  apply-patch:
+    name: Apply Kernel Patch
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout Kernel Source
+      - name: Checkout Kernel Repo
         uses: actions/checkout@v3
-    
+        with:
+          fetch-depth: 0
+
       - name: Checkout Lindroid DRM Patch
         uses: actions/checkout@v3
         with:
           repository: ${{ env.PATCH_REPO }}
           path: drm-dkms
 
-      - name: Setup Dependencies
+      - name: Apply Lindroid DRM Patch
         run: |
-          sudo apt update -y && sudo apt upgrade -y
-          sudo apt install -y \
-            nano bc bison ca-certificates curl flex gcc git \
-            libc6-dev libssl-dev openssl python-is-python3 ssh wget zip zstd sudo make \
-            clang gcc-arm-linux-gnueabi software-properties-common build-essential \
-            libarchive-tools gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-            libssl-dev libffi-dev libncurses5-dev zlib1g zlib1g-dev \
-            libreadline-dev libbz2-dev libsqlite3-dev \
-            pigz python2 python3 cpio lld llvm libtinfo5 lz4 neofetch
+          cd ${{ env.KERNEL_DIR }}
           
-          # cek environment
-          neofetch
-          # convert Kconfig file biar gak error CRLF
-          dos2unix init/Kconfig || true
-          dos2unix drivers/perf_mgr/Kconfig || true
+          # Tambah modul dan Kconfig, overwrite jika belum ada
+          grep -qxF 'obj-y += lindroid-drm/' drivers/Makefile || echo 'obj-y += lindroid-drm/' >> drivers/Makefile
+          grep -qxF 'source "drivers/lindroid-drm/Kconfig"' drivers/Kconfig || echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
+          
+          # Salin semua file patch/drm ke kernel, timpa jika sudah ada
+          rsync -a --ignore-existing ../drm-dkms/ drivers/lindroid-drm/ || echo "Files exist, overwriting..."
+          rsync -a ../drm-dkms/ drivers/lindroid-drm/
 
-      - name: Build Kernel
+      - name: Verify Patch Applied
         run: |
-          chmod +x build.sh
-          ./build.sh
-
-      - name: Upload Kernel Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-         name: Nethunter-Kernel-S20FE5G
-         path: ../artifacts/*
+          cd ${{ env.KERNEL_DIR }}
+          # Cek Makefile & Kconfig
+          if grep -q 'lindroid-drm' drivers/Makefile && grep -q 'lindroid-drm' drivers/Kconfig; then
+            echo "✅ Makefile & Kconfig sudah diupdate"
+          else
+            echo "❌ Makefile/Kconfig gagal diupdate"
+            exit 1
+          fi
+          
+          # Cek isi file patch tidak kosong
+          PATCH_FILES=$(find drivers/lindroid-drm -type f)
+          if [ -z "$PATCH_FILES" ]; then
+            echo "❌ Tidak ada file patch"
+            exit 1
+          fi
+          
+          for f in $PATCH_FILES; do
+            if [ ! -s "$f" ]; then
+              echo "❌ File $f kosong"
+              exit 1
+            fi
+          done
+          
+          echo "✅ Semua file patch ada dan tidak kosong"
