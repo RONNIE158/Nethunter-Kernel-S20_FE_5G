@@ -43,6 +43,7 @@ jobs:
             git commit -m "Tambahkan submodule lindroid-drm-loopback"
           else
             echo "Submodule sudah ada, tidak ada perubahan"
+          fi
 
       - name: Commit patch kernel jika ada perubahan
         run: |
@@ -51,6 +52,7 @@ jobs:
             git commit -m "Terapkan patch Lindroid-DRM ke kernel"
           else
             echo "Tidak ada perubahan patch kernel"
+          fi
 
       - name: Push perubahan ke origin
         run: |
