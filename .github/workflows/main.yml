@@ -1,7 +1,6 @@
 name: Terapkan Patch dan Submodule Lindroid-DRM-Loopback
 on:
   workflow_dispatch:
-    # Bisa dijalankan manual
   schedule:
     - cron: "0 0 * * *"  # Opsional: harian jam 00:00 UTC
 
@@ -23,19 +22,31 @@ jobs:
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name  "GitHub Actions"
 
+      - name: Inisialisasi dan update submodule
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive
+
+      - name: Tambahkan submodule Lindroid-DRM-Loopback jika belum ada
+        run: |
+          if [ ! -d "drivers/lindroid-drm" ]; then
+            mkdir -p drivers
+            git submodule add -b master https://github.com/Linux-on-droid/lindroid-drm-loopback.git drivers/lindroid-drm
+            git add .gitmodules drivers/lindroid-drm
+            git commit -m "Tambahkan submodule lindroid-drm-loopback"
+          else
+            echo "Submodule sudah ada, tidak ada perubahan"
+          fi
+
       - name: Terapkan patch Lindroid-DRM ke kernel
         run: |
-          # Tambahkan lindroid-drm ke build kernel
           grep -qxF 'obj-y += lindroid-drm/' drivers/Makefile || echo 'obj-y += lindroid-drm/' >> drivers/Makefile
           grep -qxF 'source "drivers/lindroid-drm/Kconfig"' drivers/Kconfig || echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
           echo "Patch Lindroid-DRM diterapkan ke Makefile dan Kconfig"
 
       - name: Terapkan konfigurasi Lindroid ke semua defconfig lama
         run: |
-          # Path ke folder defconfig (ubah sesuai kernel kamu)
           DEFCONFIG_DIR="arch/arm64/configs"
-    
-          # Daftar opsi Lindroid
           CONFIGS=(
             "CONFIG_LINDROID=y"
             "CONFIG_SYSVIPC=y"
@@ -48,48 +59,21 @@ jobs:
             "CONFIG_CGROUP_FREEZER=y"
             "CONFIG_DRM_LINDROID_EVDI=y"
           )
-
-           # Loop semua defconfig
-           for file in $DEFCONFIG_DIR/*; do
-             echo "Memperbarui $file ..."
-             for cfg in "${CONFIGS[@]}"; do
-             # Tambahkan opsi jika belum ada
-             grep -qxF "$cfg" "$file" || echo "$cfg" >> "$file"
-           done
+          for file in $DEFCONFIG_DIR/*; do
+            [ -f "$file" ] || continue
+            echo "Memperbarui $file ..."
+            for cfg in "${CONFIGS[@]}"; do
+              grep -qxF "$cfg" "$file" || echo "$cfg" >> "$file"
+            done
           done
 
-      - name: Commit perubahan defconfig
+      - name: Commit perubahan defconfig dan patch kernel
         run: |
-           if [ -n "$(git status --porcelain)" ]; then
-             git add .                        # Tambahkan semua perubahan di repo
-             git commit -m "Terapkan patch Lindroid: enable semua opsi di defconfig lama"
-             git push origin $(git branch --show-current)
-           else
-             echo "Tidak ada perubahan defconfig"
-           fi 
-
-      - name: Inisialisasi dan update submodule
-        run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive
-
-      - name: Tambahkan submodule Lindroid-DRM-Loopback jika belum ada
-        run: |
-          if [ ! -d "drivers/lindroid-drm" ]; then
-            git submodule add -b master https://github.com/Linux-on-droid/lindroid-drm-loopback.git drivers/lindroid-drm
-            git add .gitmodules drivers/lindroid-drm
-            git commit -m "Tambahkan submodule lindroid-drm-loopback"
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "Terapkan patch Lindroid: enable semua opsi di defconfig lama dan patch kernel"
           else
-            echo "Submodule sudah ada, tidak ada perubahan"
-          fi
-
-      - name: Commit patch kernel jika ada perubahan
-        run: |
-          if [ -n "$(git status --porcelain drivers/Makefile drivers/Kconfig)" ]; then
-            git add drivers/Makefile drivers/Kconfig
-            git commit -m "Terapkan patch Lindroid-DRM ke kernel"
-          else
-            echo "Tidak ada perubahan patch kernel"
+            echo "Tidak ada perubahan untuk di-commit"
           fi
 
       - name: Push perubahan ke origin
