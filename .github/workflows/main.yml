@@ -30,6 +30,43 @@ jobs:
           grep -qxF 'source "drivers/lindroid-drm/Kconfig"' drivers/Kconfig || echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
           echo "Patch Lindroid-DRM diterapkan ke Makefile dan Kconfig"
 
+      - name: Terapkan konfigurasi Lindroid ke semua defconfig lama
+        run: |
+          # Path ke folder defconfig (ubah sesuai kernel kamu)
+          DEFCONFIG_DIR="arch/arm64/configs"
+    
+          # Daftar opsi Lindroid
+          CONFIGS=(
+            "CONFIG_LINDROID=y"
+            "CONFIG_SYSVIPC=y"
+            "CONFIG_UTS_NS=y"
+            "CONFIG_PID_NS=y"
+            "CONFIG_IPC_NS=y"
+            "CONFIG_USER_NS=y"
+            "CONFIG_NET_NS=y"
+            "CONFIG_CGROUP_DEVICE=y"
+            "CONFIG_CGROUP_FREEZER=y"
+            "CONFIG_DRM_LINDROID_EVDI=y"
+          )
+
+           # Loop semua defconfig
+           for file in $DEFCONFIG_DIR/*; do
+             echo "Memperbarui $file ..."
+             for cfg in "${CONFIGS[@]}"; do
+             # Tambahkan opsi jika belum ada
+             grep -qxF "$cfg" "$file" || echo "$cfg" >> "$file"
+           done
+          done
+
+      - name: Commit perubahan defconfig
+        run: |
+         if [ -n "$(git status --porcelain $DEFCONFIG_DIR)" ]; then
+           git add $DEFCONFIG_DIR
+           git commit -m "Terapkan patch Lindroid: enable semua opsi di defconfig lama"
+           git push origin $(git branch --show-current)
+         else
+           echo "Tidak ada perubahan defconfig"  
+
       - name: Inisialisasi dan update submodule
         run: |
           git submodule sync --recursive
