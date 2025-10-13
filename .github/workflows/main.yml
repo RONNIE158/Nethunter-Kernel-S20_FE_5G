@@ -38,29 +38,27 @@ jobs:
           # Pastikan folder drivers/lindroid-drm ada
           mkdir -p drivers/lindroid-drm
 
-          # Salin semua file patch dari drm-dkms
+          # Hapus file lama jika ada
+          if [ "$(ls -A drivers/lindroid-drm)" ]; then
+            echo "⚠️ File lama ditemukan, menghapus semua..."
+            rm -rf drivers/lindroid-drm/*
+          fi
+
+          # Salin semua file patch baru dari drm-dkms
           rsync -a ../drm-dkms/ drivers/lindroid-drm/
 
           # Tambahkan modul & Kconfig jika belum ada
           grep -qxF 'obj-y += lindroid-drm/' drivers/Makefile || echo 'obj-y += lindroid-drm/' >> drivers/Makefile
           grep -qxF 'source "drivers/lindroid-drm/Kconfig"' drivers/Kconfig || echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
 
-      - name: Konfigurasi Git
-        run: |
-          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "GitHub Actions"
-
-      - name: Commit Perubahan Patch Jika Ada
-        run: |
-          git add drivers/lindroid-drm drivers/Makefile drivers/Kconfig
-          if git diff-index --quiet HEAD; then
-            echo "Tidak ada perubahan untuk di-commit"
-          else
-            git commit -m "Terapkan/perbarui patch Lindroid DRM"
-            ORIGIN_URL=$(git remote get-url origin)
-            git remote set-url origin "${ORIGIN_URL/https:\/\//https:\/\/${{ github.token }}@}"
-            git push origin $(git branch --show-current) --force-with-lease
+          # Cek integritas patch: minimal ada file .c atau .h
+          FILE_COUNT=$(find drivers/lindroid-drm -type f \( -name '*.c' -o -name '*.h' \) | wc -l)
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "❌ Tidak ada file .c atau .h di patch, patch kemungkinan salah"
+            exit 1
           fi
+
+          echo "✅ Patch Lindroid DRM diterapkan dengan benar"
 
       - name: Update Patch Lindroid DRM dari Upstream
         run: |
