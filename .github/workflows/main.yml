@@ -1,34 +1,43 @@
-name: Buat Branch Baru & Terapkan Patch Lindroid-DRM-Loopback
+name: Terapkan Patch Lindroid-DRM-Loopback
 on:
-  workflow_dispatch:
+  workflow_dispatch:      # Bisa dijalankan manual
+  schedule:
+    - cron: "0 0 * * *"  # Atur harian jam 00:00 UTC
 
 permissions:
   contents: write
 
 jobs:
-  create-branch-and-apply:
+  apply-lindroid-drm:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout repositori kernel
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: true
+
+      - name: Inisialisasi dan update submodule
+        run: |
+          # Pastikan folder submodule ada dan sinkron dengan .gitmodules
+          git submodule sync --recursive
+          git submodule update --init --recursive
 
       - name: Konfigurasi Git untuk Actions
         run: |
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name  "GitHub Actions"
 
-      - name: Buat branch baru
+      - name: Buat branch baru untuk patch Lindroid-DRM
         run: |
-          # Ganti NAMA_BRANCH sesuai keinginanmu
-          NAMA_BRANCH="update-lindroid-drm-$(date +%Y%m%d%H%M%S)"
-          git checkout -b $NAMA_BRANCH
-          echo "Branch baru dibuat: $NAMA_BRANCH"
+          # Branch baru dengan timestamp agar unik
+          BRANCH_BARU="update-lindroid-drm-$(date +%Y%m%d%H%M%S)"
+          git checkout -b $BRANCH_BARU
+          echo "Branch baru dibuat: $BRANCH_BARU"
 
-      - name: Ambil patch Lindroid-DRM-Loopback
+      - name: Fetch patch Lindroid-DRM-Loopback
         run: |
+          # Fetch semua branch dan tag dari submodule
           git -C drivers/lindroid-drm fetch --all --tags
           git -C drivers/lindroid-drm checkout origin/master
 
@@ -38,10 +47,16 @@ jobs:
             git add drivers/lindroid-drm
             git commit -m "Terapkan patch terbaru lindroid-drm-loopback"
           else
-            echo "Tidak ada perubahan di lindroid-drm-loopback"
+            echo "Tidak ada perubahan patch baru dari lindroid-drm-loopback"
 
       - name: Push branch baru ke origin
         run: |
           ORIGIN_URL=$(git remote get-url origin)
           git remote set-url origin "${ORIGIN_URL/https:\/\//https:\/\/${{ github.token }}@}"
           git push origin HEAD
+
+      - name: Jalankan workflow build jika ada perubahan
+        uses: benc-uk/workflow-dispatch@v1.2.4
+        if: ${{ hashFiles('drivers/lindroid-drm/**') != '' }}
+        with:
+          workflow: build.yml
