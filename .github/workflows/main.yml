@@ -1,18 +1,19 @@
-name: Kernel Patch Workflow
+name: Kernel Patch + Sync Upstream
 
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"  # run daily
+  workflow_dispatch:    # run manually
+
+permissions:
+  contents: write
 
 env:
   PATCH_REPO: Linux-on-droid/lindroid-drm-loopback
   KERNEL_DIR: kernel
 
 jobs:
-  apply-patch:
-    name: Apply Kernel Patch
+  apply-and-sync-patch:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Kernel Repo
@@ -30,7 +31,7 @@ jobs:
         run: |
           cd ${{ env.KERNEL_DIR }}
 
-          # Pastikan direktori drivers dan lindroid-drm ada
+          # Pastikan direktori drivers/lindroid-drm ada
           mkdir -p drivers/lindroid-drm
 
           # Buat Makefile dan Kconfig kosong jika belum ada
@@ -41,33 +42,44 @@ jobs:
           grep -qxF 'obj-y += lindroid-drm/' drivers/Makefile || echo 'obj-y += lindroid-drm/' >> drivers/Makefile
           grep -qxF 'source "drivers/lindroid-drm/Kconfig"' drivers/Kconfig || echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
 
-          # Salin semua file patch/drm ke kernel, timpa jika sudah ada
+          # Salin patch, timpa jika sudah ada
           rsync -a ../drm-dkms/ drivers/lindroid-drm/
 
-      - name: Verify Patch Applied
-        run: |
-          cd ${{ env.KERNEL_DIR }}
-
-          # Cek Makefile & Kconfig
-          if grep -q 'lindroid-drm' drivers/Makefile && grep -q 'lindroid-drm' drivers/Kconfig; then
-            echo "✅ Makefile & Kconfig sudah diupdate"
-          else
-            echo "❌ Makefile/Kconfig gagal diupdate"
-            exit 1
-          fi
-
-          # Cek file patch tidak kosong
+          # Verifikasi file patch
           PATCH_FILES=$(find drivers/lindroid-drm -type f)
-          if [ -z "$PATCH_FILES" ]; then
-            echo "❌ Tidak ada file patch"
-            exit 1
-          fi
-
           for f in $PATCH_FILES; do
             if [ ! -s "$f" ]; then
               echo "❌ File $f kosong"
               exit 1
             fi
           done
-
           echo "✅ Semua file patch ada dan tidak kosong"
+
+      - name: Configure Git
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "GitHub Actions"
+
+      - name: Commit Patch Changes
+        run: |
+          git add drivers/lindroid-drm drivers/Makefile drivers/Kconfig
+          if git diff-index --quiet HEAD; then
+            echo "No changes to commit"
+          else
+            git commit -m "Apply/update Lindroid DRM patch"
+            ORIGIN_URL=$(git remote get-url origin)
+            git remote set-url origin "${ORIGIN_URL/https:\/\//https:\/\/${{ github.token }}@}"
+            git push origin $(git branch --show-current) --force-with-lease
+          fi
+
+      - name: Sync/Rebase on Upstream
+        uses: archiemeng/rebase-upstream-action@master
+        with:
+          branch: ${{ github.ref_name }}
+          depth: 0
+
+      - name: Trigger Build Workflow if Patch Updated
+        uses: benc-uk/workflow-dispatch@v1.2.4
+        if: ${{ hashFiles('drivers/lindroid-drm/**') != '' }}
+        with:
+          workflow: build.yml
