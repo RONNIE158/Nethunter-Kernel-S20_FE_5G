@@ -1,14 +1,15 @@
-name: Terapkan Patch Lindroid-DRM-Loopback
+name: Terapkan Patch dan Submodule Lindroid-DRM-Loopback
 on:
-  workflow_dispatch:      # Bisa dijalankan manual
+  workflow_dispatch:
+    # Bisa dijalankan manual
   schedule:
-    - cron: "0 0 * * *"  # Atur harian jam 00:00 UTC
+    - cron: "0 0 * * *"  # Opsional: harian jam 00:00 UTC
 
 permissions:
   contents: write
 
 jobs:
-  apply-lindroid-drm:
+  apply-patch-submodule:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repositori kernel
@@ -17,50 +18,42 @@ jobs:
           fetch-depth: 0
           submodules: true
 
-      - name: Inisialisasi dan update submodule
-        run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive
-
-      - name: Fetch patch Lindroid-DRM-Loopback
-        run: |
-          git -C drivers/lindroid-drm fetch --all --tags
-          git -C drivers/lindroid-drm checkout origin/master
-
       - name: Konfigurasi Git untuk Actions
         run: |
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name  "GitHub Actions"
 
-      - name: Buat branch baru untuk patch Lindroid-DRM
+      - name: Terapkan patch Lindroid-DRM ke kernel
         run: |
-          # Branch baru dengan timestamp agar unik
-          BRANCH_BARU="update-lindroid-drm-$(date +%Y%m%d%H%M%S)"
-          git checkout -b $BRANCH_BARU
-          echo "Branch baru dibuat: $BRANCH_BARU"
+          # Tambahkan lindroid-drm ke build kernel
+          grep -qxF 'obj-y += lindroid-drm/' drivers/Makefile || echo 'obj-y += lindroid-drm/' >> drivers/Makefile
+          grep -qxF 'source "drivers/lindroid-drm/Kconfig"' drivers/Kconfig || echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
+          echo "Patch Lindroid-DRM diterapkan ke Makefile dan Kconfig"
 
-      - name: Fetch patch Lindroid-DRM-Loopback
+      - name: Inisialisasi dan update submodule
         run: |
-          # Fetch semua branch dan tag dari submodule
-          git -C drivers/lindroid-drm fetch --all --tags
-          git -C drivers/lindroid-drm checkout origin/master
+          git submodule sync --recursive
+          git submodule update --init --recursive
 
-      - name: Commit perubahan submodule jika ada
+      - name: Tambahkan submodule Lindroid-DRM-Loopback jika belum ada
         run: |
-          if [ -n "$(git status --porcelain drivers/lindroid-drm)" ]; then
-            git add drivers/lindroid-drm
-            git commit -m "Terapkan patch terbaru lindroid-drm-loopback"
+          if [ ! -d "drivers/lindroid-drm" ]; then
+            git submodule add -b master https://github.com/Linux-on-droid/lindroid-drm-loopback.git drivers/lindroid-drm
+            git add .gitmodules drivers/lindroid-drm
+            git commit -m "Tambahkan submodule lindroid-drm-loopback"
           else
-            echo "Tidak ada perubahan patch baru dari lindroid-drm-loopback"
+            echo "Submodule sudah ada, tidak ada perubahan"
 
-      - name: Push branch baru ke origin
+      - name: Commit patch kernel jika ada perubahan
+        run: |
+          if [ -n "$(git status --porcelain drivers/Makefile drivers/Kconfig)" ]; then
+            git add drivers/Makefile drivers/Kconfig
+            git commit -m "Terapkan patch Lindroid-DRM ke kernel"
+          else
+            echo "Tidak ada perubahan patch kernel"
+
+      - name: Push perubahan ke origin
         run: |
           ORIGIN_URL=$(git remote get-url origin)
           git remote set-url origin "${ORIGIN_URL/https:\/\//https:\/\/${{ github.token }}@}"
-          git push origin HEAD
-
-      - name: Jalankan workflow build jika ada perubahan
-        uses: benc-uk/workflow-dispatch@v1.2.4
-        if: ${{ hashFiles('drivers/lindroid-drm/**') != '' }}
-        with:
-          workflow: build.yml
+          git push origin $(git branch --show-current)
