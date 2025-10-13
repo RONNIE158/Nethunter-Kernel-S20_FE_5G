@@ -36,11 +36,8 @@ jobs:
       run: |
         cd ${{ env.KERNEL_DIR }}
 
-        # Buat file dummy sementara jika folder drivers belum ada
-        if [ ! -d drivers ]; then
-          touch drivers.tmp
-          mv drivers.tmp drivers
-        fi
+        # Buat folder drivers kalau belum ada
+        mkdir -p drivers
 
         # Hapus symlink lama kalau ada
         [ -L drivers/lindroid-drm ] && rm drivers/lindroid-drm
@@ -48,9 +45,9 @@ jobs:
         # Buat symlink ke patch
         ln -s ../drm-dkms drivers/lindroid-drm
 
-        # Append modul & Kconfig
-        echo 'obj-y += lindroid-drm/' >> drivers/Makefile
-        echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
+        # Append modul & Kconfig (tidak duplikasi)
+        grep -qxF 'obj-y += lindroid-drm/' drivers/Makefile || echo 'obj-y += lindroid-drm/' >> drivers/Makefile
+        grep -qxF 'source "drivers/lindroid-drm/Kconfig"' drivers/Kconfig || echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
 
         # Cek patch valid
         FILE_COUNT=$(find drivers/lindroid-drm -type f \( -name '*.c' -o -name '*.h' \) | wc -l)
