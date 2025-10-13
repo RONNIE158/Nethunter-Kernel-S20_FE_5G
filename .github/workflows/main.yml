@@ -34,8 +34,13 @@ jobs:
           # Pastikan direktori drivers/lindroid-drm ada
           mkdir -p drivers/lindroid-drm
 
-          # Tambahkan .gitkeep agar git bisa track folder kosong
-          touch drivers/lindroid-drm/.gitkeep
+          # Salin patch dari drm-dkms
+          rsync -a ../drm-dkms/ drivers/lindroid-drm/
+
+          # Jika folder kosong, tambahkan .gitkeep supaya git bisa track
+          if [ -z "$(ls -A drivers/lindroid-drm)" ]; then
+            touch drivers/lindroid-drm/.gitkeep
+          fi
 
           # Buat Makefile dan Kconfig kosong jika belum ada
           [ ! -f drivers/Makefile ] && touch drivers/Makefile
@@ -45,10 +50,7 @@ jobs:
           grep -qxF 'obj-y += lindroid-drm/' drivers/Makefile || echo 'obj-y += lindroid-drm/' >> drivers/Makefile
           grep -qxF 'source "drivers/lindroid-drm/Kconfig"' drivers/Kconfig || echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
 
-          # Salin patch, timpa jika sudah ada
-          rsync -a ../drm-dkms/ drivers/lindroid-drm/
-
-          # Verifikasi file patch tidak kosong
+          # Verifikasi file patch tidak kosong (kecuali .gitkeep)
           PATCH_FILES=$(find drivers/lindroid-drm -type f ! -name ".gitkeep")
           if [ -z "$PATCH_FILES" ]; then
             echo "❌ Tidak ada file patch selain .gitkeep"
@@ -69,7 +71,7 @@ jobs:
 
       - name: Commit Patch Changes
         run: |
-          git add drivers/lindroid-drm drivers/Makefile drivers/Kconfig
+          git add drivers/lindroid-drm/* drivers/Makefile drivers/Kconfig
           if git diff-index --quiet HEAD; then
             echo "No changes to commit"
           else
