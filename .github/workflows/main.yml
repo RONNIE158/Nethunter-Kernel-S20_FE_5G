@@ -1,4 +1,4 @@
-name: Kernel Patch + Sync Upstream
+name: Smart Kernel Patch + Sync Upstream
 
 on:
   schedule:
@@ -13,7 +13,7 @@ env:
   KERNEL_DIR: kernel
 
 jobs:
-  apply-and-sync-patch:
+  smart-apply-patch:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Kernel Repo
@@ -28,57 +28,46 @@ jobs:
           path: drm-dkms
 
       - name: Apply Lindroid DRM Patch
+        id: apply_patch
         run: |
           cd ${{ env.KERNEL_DIR }}
-
-          # Pastikan direktori drivers/lindroid-drm ada
           mkdir -p drivers/lindroid-drm
-
-          # Salin patch dari drm-dkms
           rsync -a ../drm-dkms/ drivers/lindroid-drm/
-
-          # Jika folder kosong, tambahkan .gitkeep supaya git bisa track
           if [ -z "$(ls -A drivers/lindroid-drm)" ]; then
             touch drivers/lindroid-drm/.gitkeep
           fi
-
-          # Buat Makefile dan Kconfig kosong jika belum ada
           [ ! -f drivers/Makefile ] && touch drivers/Makefile
           [ ! -f drivers/Kconfig ] && touch drivers/Kconfig
-
-          # Tambah modul dan Kconfig jika belum ada
           grep -qxF 'obj-y += lindroid-drm/' drivers/Makefile || echo 'obj-y += lindroid-drm/' >> drivers/Makefile
           grep -qxF 'source "drivers/lindroid-drm/Kconfig"' drivers/Kconfig || echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
 
-          # Verifikasi file patch tidak kosong (kecuali .gitkeep)
-          PATCH_FILES=$(find drivers/lindroid-drm -type f ! -name ".gitkeep")
-          if [ -z "$PATCH_FILES" ]; then
-            echo "❌ Tidak ada file patch selain .gitkeep"
-            exit 1
-          fi
-          for f in $PATCH_FILES; do
-            if [ ! -s "$f" ]; then
-              echo "❌ File $f kosong"
-              exit 1
-            fi
-          done
-          echo "✅ Semua file patch ada dan tidak kosong"
+          # Hitung hash patch sekarang
+          PATCH_HASH=$(find drivers/lindroid-drm -type f ! -name ".gitkeep" -exec sha1sum {} \; | sha1sum | awk '{print $1}')
+          echo "patch_hash=$PATCH_HASH" >> $GITHUB_OUTPUT
 
       - name: Configure Git
         run: |
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "GitHub Actions"
 
-      - name: Commit Patch Changes
+      - name: Commit & Push Patch if Changed
         run: |
-          git add drivers/lindroid-drm/* drivers/Makefile drivers/Kconfig
-          if git diff-index --quiet HEAD; then
-            echo "No changes to commit"
+          PATCH_HASH=${{ steps.apply_patch.outputs.patch_hash }}
+          # Ambil hash terakhir yang di-commit untuk folder patch
+          LAST_HASH=$(git ls-tree HEAD drivers/lindroid-drm | sha1sum | awk '{print $1}' || echo "")
+
+          if [ "$PATCH_HASH" == "$LAST_HASH" ]; then
+            echo "Patch sama seperti commit terakhir, skip commit & push"
           else
-            git commit -m "Apply/update Lindroid DRM patch"
-            ORIGIN_URL=$(git remote get-url origin)
-            git remote set-url origin "${ORIGIN_URL/https:\/\//https:\/\/${{ github.token }}@}"
-            git push origin $(git branch --show-current) --force-with-lease
+            git add drivers/lindroid-drm drivers/Makefile drivers/Kconfig
+            if git diff-index --quiet HEAD; then
+              echo "No changes to commit"
+            else
+              git commit -m "Apply/update Lindroid DRM patch"
+              ORIGIN_URL=$(git remote get-url origin)
+              git remote set-url origin "${ORIGIN_URL/https:\/\//https:\/\/${{ github.token }}@}"
+              git push origin $(git branch --show-current) --force-with-lease
+            fi
           fi
 
       - name: Sync/Rebase on Upstream
@@ -88,7 +77,7 @@ jobs:
           depth: 0
 
       - name: Trigger Build Workflow if Patch Updated
+        if: ${{ steps.apply_patch.outputs.patch_hash != '' }}
         uses: benc-uk/workflow-dispatch@v1.2.4
-        if: ${{ hashFiles('drivers/lindroid-drm/**') != '' }}
         with:
           workflow: build.yml
