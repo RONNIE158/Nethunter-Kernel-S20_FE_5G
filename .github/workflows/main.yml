@@ -19,9 +19,13 @@ jobs:
 
       - name: Inisialisasi dan update submodule
         run: |
-          # Pastikan folder submodule ada dan sinkron dengan .gitmodules
           git submodule sync --recursive
           git submodule update --init --recursive
+
+      - name: Fetch patch Lindroid-DRM-Loopback
+        run: |
+          git -C drivers/lindroid-drm fetch --all --tags
+          git -C drivers/lindroid-drm checkout origin/master
 
       - name: Konfigurasi Git untuk Actions
         run: |
