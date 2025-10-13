@@ -34,7 +34,10 @@ jobs:
 
       - name: Terapkan Patch (Symlink + Update Makefile/Kconfig/.config)
         run: |
-          cd ${{ env.KERNEL_DIR }}
+          cd kernel
+
+          # Pastikan folder drivers ada
+          mkdir -p drivers
 
           # Hapus symlink lama jika ada
           [ -L drivers/lindroid-drm ] && rm drivers/lindroid-drm
