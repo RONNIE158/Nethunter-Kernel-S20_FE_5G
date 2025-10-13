@@ -1,4 +1,4 @@
-name: Terapkan Patch Lindroid DRM + Commit
+name: Patch Kernel Lindroid DRM (Symlink)
 
 on:
   schedule:
@@ -13,10 +13,10 @@ env:
   KERNEL_DIR: kernel
 
 jobs:
-  terapkan-dan-push-patch:
+  symlink-patch:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repo Kernel
+      - name: Checkout Kernel Repo
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
@@ -32,21 +32,20 @@ jobs:
           path: drm-dkms
           fetch-depth: 1
 
-      - name: Terapkan Patch Lindroid DRM
+      - name: Terapkan Patch Lindroid DRM dengan Symlink
         run: |
           cd ${{ env.KERNEL_DIR }}
 
-          # Pastikan folder patch ada
-          mkdir -p drivers/lindroid-drm
+          # Pastikan folder drivers ada
+          mkdir -p drivers
 
-          # Hapus file lama jika ada
-          if [ "$(ls -A drivers/lindroid-drm)" ]; then
-            echo "⚠️ Menghapus patch lama..."
-            rm -rf drivers/lindroid-drm/*
+          # Hapus folder lama jika ada
+          if [ -L drivers/lindroid-drm ] || [ -d drivers/lindroid-drm ]; then
+            rm -rf drivers/lindroid-drm
           fi
 
-          # Salin patch baru dari repo Lindroid DRM
-          rsync -a ../drm-dkms/ drivers/lindroid-drm/
+          # Buat symlink ke folder patch
+          ln -s ../../drm-dkms drivers/lindroid-drm
 
           # Tambahkan modul & Kconfig jika belum ada
           grep -qxF 'obj-y += lindroid-drm/' drivers/Makefile || echo 'obj-y += lindroid-drm/' >> drivers/Makefile
@@ -58,10 +57,14 @@ jobs:
             echo "❌ Patch Lindroid DRM kosong atau salah!"
             exit 1
           fi
-          echo "✅ Patch Lindroid DRM siap diterapkan"
+          echo "✅ Patch Lindroid DRM siap (symlink)"
 
-      - name: Commit & Push Patch ke Repo Kernel
+      - name: Commit & Push Patch Permanen (Optional)
         run: |
+          # Copy patch fisik untuk commit permanen
+          rm -rf drivers/lindroid-drm
+          cp -r ../drm-dkms drivers/lindroid-drm
+
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "GitHub Actions"
 
@@ -76,11 +79,6 @@ jobs:
             git push origin $(git branch --show-current)
             echo "✅ Patch berhasil di-commit & di-push"
           fi
-
-      - name: Update Patch Lindroid DRM dari Upstream
-        run: |
-          git -C ${{ env.KERNEL_DIR }}/drivers/lindroid-drm fetch -a -t
-          git -C ${{ env.KERNEL_DIR }}/drivers/lindroid-drm checkout origin/master
 
       - name: Rebase dengan Upstream
         uses: archiemeng/rebase-upstream-action@master
