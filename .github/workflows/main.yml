@@ -66,6 +66,7 @@ jobs:
            git push origin $(git branch --show-current)
          else
            echo "Tidak ada perubahan defconfig"  
+         fi  
 
       - name: Inisialisasi dan update submodule
         run: |
