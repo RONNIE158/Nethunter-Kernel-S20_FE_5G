@@ -34,13 +34,23 @@ jobs:
       - name: Apply Lindroid DRM Patch
         run: |
           cd ${{ env.KERNEL_DIR }}
+
+          # Pastikan folder drivers/lindroid-drm ada
           mkdir -p drivers/lindroid-drm
+
+          # Salin semua file patch dari drm-dkms
           rsync -a ../drm-dkms/ drivers/lindroid-drm/
+
+          # Kalau folder masih kosong, tambahkan .gitkeep
           if [ -z "$(ls -A drivers/lindroid-drm)" ]; then
             touch drivers/lindroid-drm/.gitkeep
           fi
+
+          # Buat Makefile & Kconfig jika belum ada
           [ ! -f drivers/Makefile ] && touch drivers/Makefile
           [ ! -f drivers/Kconfig ] && touch drivers/Kconfig
+
+          # Tambahkan modul & Kconfig jika belum ada
           grep -qxF 'obj-y += lindroid-drm/' drivers/Makefile || echo 'obj-y += lindroid-drm/' >> drivers/Makefile
           grep -qxF 'source "drivers/lindroid-drm/Kconfig"' drivers/Kconfig || echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
 
