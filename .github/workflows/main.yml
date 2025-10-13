@@ -60,13 +60,13 @@ jobs:
 
       - name: Commit perubahan defconfig
         run: |
-          if [ -n "$(git status --porcelain $DEFCONFIG_DIR)" ]; then
-            git add $DEFCONFIG_DIR/*        # <-- pastikan semua file di folder ter-add
-            git commit -m "Terapkan patch Lindroid: enable semua opsi di defconfig lama"
-            git push origin $(git branch --show-current)
-          else
-            echo "Tidak ada perubahan defconfig"
-          fi  
+           if [ -n "$(git status --porcelain)" ]; then
+             git add .                        # Tambahkan semua perubahan di repo
+             git commit -m "Terapkan patch Lindroid: enable semua opsi di defconfig lama"
+             git push origin $(git branch --show-current)
+           else
+             echo "Tidak ada perubahan defconfig"
+           fi 
 
       - name: Inisialisasi dan update submodule
         run: |
