@@ -1,4 +1,4 @@
-name: Terapkan Patch dan Submodule Lindroid-DRM-Loopback
+name: Enable Submodule Lindroid-DRM-Loopback + lxc Defconfig
 on:
   workflow_dispatch:
   schedule:
