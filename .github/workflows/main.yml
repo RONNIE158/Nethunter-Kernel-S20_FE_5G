@@ -1,4 +1,4 @@
-name: Smart Kernel Patch + Sync Upstream
+name: Kernel Patch Lindroid + Sync Upstream
 
 on:
   schedule:
@@ -41,7 +41,7 @@ jobs:
           # Salin semua file patch dari drm-dkms
           rsync -a ../drm-dkms/ drivers/lindroid-drm/
 
-          # Kalau folder masih kosong, tambahkan .gitkeep
+          # Kalau folder masih kosong, buat .gitkeep agar bisa di-track Git
           if [ -z "$(ls -A drivers/lindroid-drm)" ]; then
             touch drivers/lindroid-drm/.gitkeep
           fi
