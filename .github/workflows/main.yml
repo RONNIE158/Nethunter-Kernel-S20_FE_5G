@@ -34,6 +34,9 @@ jobs:
           # Pastikan direktori drivers/lindroid-drm ada
           mkdir -p drivers/lindroid-drm
 
+          # Tambahkan .gitkeep agar git bisa track folder kosong
+          touch drivers/lindroid-drm/.gitkeep
+
           # Buat Makefile dan Kconfig kosong jika belum ada
           [ ! -f drivers/Makefile ] && touch drivers/Makefile
           [ ! -f drivers/Kconfig ] && touch drivers/Kconfig
@@ -45,8 +48,12 @@ jobs:
           # Salin patch, timpa jika sudah ada
           rsync -a ../drm-dkms/ drivers/lindroid-drm/
 
-          # Verifikasi file patch
-          PATCH_FILES=$(find drivers/lindroid-drm -type f)
+          # Verifikasi file patch tidak kosong
+          PATCH_FILES=$(find drivers/lindroid-drm -type f ! -name ".gitkeep")
+          if [ -z "$PATCH_FILES" ]; then
+            echo "❌ Tidak ada file patch selain .gitkeep"
+            exit 1
+          fi
           for f in $PATCH_FILES; do
             if [ ! -s "$f" ]; then
               echo "❌ File $f kosong"
