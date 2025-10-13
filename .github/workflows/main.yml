@@ -29,18 +29,25 @@ jobs:
       - name: Apply Lindroid DRM Patch
         run: |
           cd ${{ env.KERNEL_DIR }}
-          
-          # Tambah modul dan Kconfig, overwrite jika belum ada
+
+          # Pastikan direktori drivers dan lindroid-drm ada
+          mkdir -p drivers/lindroid-drm
+
+          # Buat Makefile dan Kconfig kosong jika belum ada
+          [ ! -f drivers/Makefile ] && touch drivers/Makefile
+          [ ! -f drivers/Kconfig ] && touch drivers/Kconfig
+
+          # Tambah modul dan Kconfig jika belum ada
           grep -qxF 'obj-y += lindroid-drm/' drivers/Makefile || echo 'obj-y += lindroid-drm/' >> drivers/Makefile
           grep -qxF 'source "drivers/lindroid-drm/Kconfig"' drivers/Kconfig || echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
-          
+
           # Salin semua file patch/drm ke kernel, timpa jika sudah ada
-          rsync -a --ignore-existing ../drm-dkms/ drivers/lindroid-drm/ || echo "Files exist, overwriting..."
           rsync -a ../drm-dkms/ drivers/lindroid-drm/
 
       - name: Verify Patch Applied
         run: |
           cd ${{ env.KERNEL_DIR }}
+
           # Cek Makefile & Kconfig
           if grep -q 'lindroid-drm' drivers/Makefile && grep -q 'lindroid-drm' drivers/Kconfig; then
             echo "✅ Makefile & Kconfig sudah diupdate"
@@ -48,19 +55,19 @@ jobs:
             echo "❌ Makefile/Kconfig gagal diupdate"
             exit 1
           fi
-          
-          # Cek isi file patch tidak kosong
+
+          # Cek file patch tidak kosong
           PATCH_FILES=$(find drivers/lindroid-drm -type f)
           if [ -z "$PATCH_FILES" ]; then
             echo "❌ Tidak ada file patch"
             exit 1
           fi
-          
+
           for f in $PATCH_FILES; do
             if [ ! -s "$f" ]; then
               echo "❌ File $f kosong"
               exit 1
             fi
           done
-          
+
           echo "✅ Semua file patch ada dan tidak kosong"
