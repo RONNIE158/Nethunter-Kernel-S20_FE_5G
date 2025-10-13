@@ -1,9 +1,9 @@
-name: Patch Kernel Lindroid DRM (Symlink & Commit)
+name: Terapkan Patch Lindroid DRM
 
 on:
-  schedule:
-    - cron: "0 0 * * *" # run daily
   workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"  # Run tiap hari jam 03:00 UTC
 
 permissions:
   contents: write
@@ -16,91 +16,65 @@ jobs:
   apply-patch:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Kernel Repo
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+    # Checkout kernel repo
+    - name: Checkout Kernel
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+        submodules: true
 
-      - name: Ambil hash awal
-        id: get-initial-hash
-        run: echo "init_hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+    # Checkout patch repo
+    - name: Checkout Patch Lindroid DRM
+      uses: actions/checkout@v3
+      with:
+        repository: ${{ env.PATCH_REPO }}
+        path: drm-dkms
+        fetch-depth: 1
 
-      - name: Checkout Patch Lindroid DRM
-        uses: actions/checkout@v3
-        with:
-          repository: ${{ env.PATCH_REPO }}
-          path: drm-dkms
-          fetch-depth: 1
+    # Terapkan patch dengan symlink + append Makefile/Kconfig
+    - name: Terapkan Patch
+      run: |
+        cd ${{ env.KERNEL_DIR }}
 
-      - name: Terapkan Patch (Symlink + Update Makefile/Kconfig/.config)
-        run: |
-          cd kernel
+        # Buat file dummy sementara jika folder drivers belum ada
+        if [ ! -d drivers ]; then
+          touch drivers.tmp
+          mv drivers.tmp drivers
+        fi
 
-          # Pastikan folder drivers ada
-          mkdir -p drivers
+        # Hapus symlink lama kalau ada
+        [ -L drivers/lindroid-drm ] && rm drivers/lindroid-drm
 
-          # Hapus symlink lama kalau ada
-          [ -L drivers/lindroid-drm ] && rm drivers/lindroid-drm
+        # Buat symlink ke patch
+        ln -s ../drm-dkms drivers/lindroid-drm
 
-          # Buat symlink ke patch
-          ln -s ../drm-dkms drivers/lindroid-drm
+        # Append modul & Kconfig
+        echo 'obj-y += lindroid-drm/' >> drivers/Makefile
+        echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
 
-          # Append modul & Kconfig tanpa cek
-          echo 'obj-y += lindroid-drm/' >> drivers/Makefile
-          echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
+        # Cek patch valid
+        FILE_COUNT=$(find drivers/lindroid-drm -type f \( -name '*.c' -o -name '*.h' \) | wc -l)
+        if [ "$FILE_COUNT" -eq 0 ]; then
+          echo "❌ Patch Lindroid DRM kosong atau salah!"
+          exit 1
+        fi
 
-          # Cek patch valid
-          FILE_COUNT=$(find drivers/lindroid-drm -type f \( -name '*.c' -o -name '*.h' \) | wc -l)
-          if [ "$FILE_COUNT" -eq 0 ]; then
-             echo "❌ Patch Lindroid DRM kosong atau salah!"
-             exit 1
-          fi
+        echo "✅ Patch Lindroid DRM siap (symlink + append Makefile/Kconfig)"
 
-          echo "✅ Patch Lindroid DRM siap (symlink + append Makefile/Kconfig)"
+    # Commit & push perubahan jika ada
+    - name: Commit & Push Patch
+      run: |
+        git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "GitHub Actions"
 
-      - name: Commit & Push Patch Permanen Jika Ada Perubahan
-        run: |
-          cd ${{ env.KERNEL_DIR }}
+        git add drivers/lindroid-drm drivers/Makefile drivers/Kconfig
 
-          # Copy patch fisik untuk commit permanen
-          rm -rf drivers/lindroid-drm
-          cp -r ../drm-dkms drivers/lindroid-drm
-
-          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "GitHub Actions"
-
-          # Simpan hash awal Makefile & Kconfig
-          MAKEFILE_HASH_BEFORE=$(sha256sum drivers/Makefile | awk '{print $1}')
-          KCONFIG_HASH_BEFORE=$(sha256sum drivers/Kconfig | awk '{print $1}')
-
-          git add drivers/lindroid-drm drivers/Makefile drivers/Kconfig .config
-
-          # Hash setelah add
-          MAKEFILE_HASH_AFTER=$(sha256sum drivers/Makefile | awk '{print $1}')
-          KCONFIG_HASH_AFTER=$(sha256sum drivers/Kconfig | awk '{print $1}')
-
-          if git diff-index --quiet HEAD && [ "$MAKEFILE_HASH_BEFORE" == "$MAKEFILE_HASH_AFTER" ] && [ "$KCONFIG_HASH_BEFORE" == "$KCONFIG_HASH_AFTER" ]; then
-            echo "Tidak ada perubahan di patch, Makefile, atau Kconfig"
-          else
-            git commit -m "Terapkan/perbarui patch Lindroid DRM + update Makefile & Kconfig + config Lindroid"
-            ORIGIN_URL=$(git remote get-url origin)
-            git remote set-url origin "${ORIGIN_URL/https:\/\//https://${{ github.token }}@}"
-            git push origin $(git branch --show-current)
-            echo "✅ Patch & konfigurasi berhasil di-commit & di-push"
-          fi
-
-      - name: Rebase dengan Upstream
-        uses: archiemeng/rebase-upstream-action@master
-        with:
-          branch: ${{ github.ref_name }}
-          depth: 0
-
-      - name: Ambil hash saat ini
-        id: get-current-hash
-        run: echo "cur_hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-
-      - name: Jalankan Build Workflow Jika Patch Berubah
-        uses: benc-uk/workflow-dispatch@v1.2.4
-        if: ${{ steps.get-initial-hash.outputs.init_hash != steps.get-current-hash.outputs.cur_hash }}
-        with:
-          workflow: build.yml
+        if git diff-index --quiet HEAD; then
+          echo "Tidak ada perubahan untuk di-commit"
+        else
+          git commit -m "Terapkan/perbarui patch Lindroid DRM"
+          ORIGIN_URL=$(git remote get-url origin)
+          git remote set-url origin "${ORIGIN_URL/https:\/\//https://${{ github.token }}@}"
+          git push origin $(git branch --show-current) --force-with-lease
+          echo "✅ Patch berhasil di-commit & di-push"
+        fi
