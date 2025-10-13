@@ -1,8 +1,8 @@
-name: Patch Kernel Lindroid DRM (Symlink)
+name: Patch Kernel Lindroid DRM (Symlink & Commit)
 
 on:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 0 * * *" # run daily
   workflow_dispatch:
 
 permissions:
@@ -13,7 +13,7 @@ env:
   KERNEL_DIR: kernel
 
 jobs:
-  symlink-patch:
+  apply-patch:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Kernel Repo
@@ -32,24 +32,23 @@ jobs:
           path: drm-dkms
           fetch-depth: 1
 
-      - name: Terapkan Patch Lindroid DRM dengan Symlink
+      - name: Terapkan Patch (Symlink + Update Makefile/Kconfig/.config)
         run: |
           cd ${{ env.KERNEL_DIR }}
 
-          # Pastikan folder drivers ada
-          mkdir -p drivers
+          # Hapus symlink lama jika ada
+          [ -L drivers/lindroid-drm ] && rm drivers/lindroid-drm
 
-          # Hapus folder lama jika ada
-          if [ -L drivers/lindroid-drm ] || [ -d drivers/lindroid-drm ]; then
-            rm -rf drivers/lindroid-drm
-          fi
+          # Buat symlink ke patch
+          ln -s ../drm-dkms drivers/lindroid-drm
 
-          # Buat symlink ke folder patch
-          ln -s ../../drm-dkms drivers/lindroid-drm
+          # Tambahkan modul di Makefile jika belum ada
+          grep -qxF 'obj-$(CONFIG_DRM_LINDROID_EVDI) += lindroid-drm/' drivers/Makefile || \
+            echo 'obj-$(CONFIG_DRM_LINDROID_EVDI) += lindroid-drm/' >> drivers/Makefile
 
-          # Tambahkan modul & Kconfig jika belum ada
-          grep -qxF 'obj-y += lindroid-drm/' drivers/Makefile || echo 'obj-y += lindroid-drm/' >> drivers/Makefile
-          grep -qxF 'source "drivers/lindroid-drm/Kconfig"' drivers/Kconfig || echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
+          # Tambahkan source di Kconfig jika belum ada
+          grep -qxF 'source "drivers/lindroid-drm/Kconfig"' drivers/Kconfig || \
+            echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
 
           # Cek patch valid
           FILE_COUNT=$(find drivers/lindroid-drm -type f \( -name '*.c' -o -name '*.h' \) | wc -l)
@@ -57,10 +56,13 @@ jobs:
             echo "❌ Patch Lindroid DRM kosong atau salah!"
             exit 1
           fi
-          echo "✅ Patch Lindroid DRM siap (symlink)"
 
-      - name: Commit & Push Patch Permanen (Optional)
+          echo "✅ Patch Lindroid DRM siap (symlink + config)"
+
+      - name: Commit & Push Patch Permanen Jika Ada Perubahan
         run: |
+          cd ${{ env.KERNEL_DIR }}
+
           # Copy patch fisik untuk commit permanen
           rm -rf drivers/lindroid-drm
           cp -r ../drm-dkms drivers/lindroid-drm
@@ -68,16 +70,24 @@ jobs:
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "GitHub Actions"
 
-          git add drivers/lindroid-drm drivers/Makefile drivers/Kconfig
+          # Simpan hash awal Makefile & Kconfig
+          MAKEFILE_HASH_BEFORE=$(sha256sum drivers/Makefile | awk '{print $1}')
+          KCONFIG_HASH_BEFORE=$(sha256sum drivers/Kconfig | awk '{print $1}')
 
-          if git diff-index --quiet HEAD; then
-            echo "Tidak ada perubahan untuk di-commit"
+          git add drivers/lindroid-drm drivers/Makefile drivers/Kconfig .config
+
+          # Hash setelah add
+          MAKEFILE_HASH_AFTER=$(sha256sum drivers/Makefile | awk '{print $1}')
+          KCONFIG_HASH_AFTER=$(sha256sum drivers/Kconfig | awk '{print $1}')
+
+          if git diff-index --quiet HEAD && [ "$MAKEFILE_HASH_BEFORE" == "$MAKEFILE_HASH_AFTER" ] && [ "$KCONFIG_HASH_BEFORE" == "$KCONFIG_HASH_AFTER" ]; then
+            echo "Tidak ada perubahan di patch, Makefile, atau Kconfig"
           else
-            git commit -m "Terapkan/perbarui patch Lindroid DRM"
+            git commit -m "Terapkan/perbarui patch Lindroid DRM + update Makefile & Kconfig + config Lindroid"
             ORIGIN_URL=$(git remote get-url origin)
             git remote set-url origin "${ORIGIN_URL/https:\/\//https://${{ github.token }}@}"
             git push origin $(git branch --show-current)
-            echo "✅ Patch berhasil di-commit & di-push"
+            echo "✅ Patch & konfigurasi berhasil di-commit & di-push"
           fi
 
       - name: Rebase dengan Upstream
