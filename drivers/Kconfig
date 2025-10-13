@@ -271,3 +271,4 @@ source "drivers/kunit/Kconfig"
 
 source "drivers/spu_verify/Kconfig"
 endmenu
+source "drivers/lindroid-drm/Kconfig"
