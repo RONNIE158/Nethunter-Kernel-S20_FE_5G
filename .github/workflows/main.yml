@@ -13,13 +13,17 @@ env:
   KERNEL_DIR: kernel
 
 jobs:
-  smart-apply-patch:
+  apply-and-sync-patch:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Kernel Repo
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
+
+      - name: Get initial hash
+        id: get-initial-hash
+        run: echo "init_hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - name: Checkout Lindroid DRM Patch
         uses: actions/checkout@v3
@@ -28,7 +32,6 @@ jobs:
           path: drm-dkms
 
       - name: Apply Lindroid DRM Patch
-        id: apply_patch
         run: |
           cd ${{ env.KERNEL_DIR }}
           mkdir -p drivers/lindroid-drm
@@ -41,43 +44,39 @@ jobs:
           grep -qxF 'obj-y += lindroid-drm/' drivers/Makefile || echo 'obj-y += lindroid-drm/' >> drivers/Makefile
           grep -qxF 'source "drivers/lindroid-drm/Kconfig"' drivers/Kconfig || echo 'source "drivers/lindroid-drm/Kconfig"' >> drivers/Kconfig
 
-          # Hitung hash patch sekarang
-          PATCH_HASH=$(find drivers/lindroid-drm -type f ! -name ".gitkeep" -exec sha1sum {} \; | sha1sum | awk '{print $1}')
-          echo "patch_hash=$PATCH_HASH" >> $GITHUB_OUTPUT
-
       - name: Configure Git
         run: |
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "GitHub Actions"
 
-      - name: Commit & Push Patch if Changed
+      - name: Commit Patch Changes if Changed
         run: |
-          PATCH_HASH=${{ steps.apply_patch.outputs.patch_hash }}
-          # Ambil hash terakhir yang di-commit untuk folder patch
-          LAST_HASH=$(git ls-tree HEAD drivers/lindroid-drm | sha1sum | awk '{print $1}' || echo "")
-
-          if [ "$PATCH_HASH" == "$LAST_HASH" ]; then
-            echo "Patch sama seperti commit terakhir, skip commit & push"
+          git add drivers/lindroid-drm drivers/Makefile drivers/Kconfig
+          if git diff-index --quiet HEAD; then
+            echo "No changes to commit"
           else
-            git add drivers/lindroid-drm drivers/Makefile drivers/Kconfig
-            if git diff-index --quiet HEAD; then
-              echo "No changes to commit"
-            else
-              git commit -m "Apply/update Lindroid DRM patch"
-              ORIGIN_URL=$(git remote get-url origin)
-              git remote set-url origin "${ORIGIN_URL/https:\/\//https:\/\/${{ github.token }}@}"
-              git push origin $(git branch --show-current) --force-with-lease
-            fi
+            git commit -m "Apply/update Lindroid DRM patch"
+            ORIGIN_URL=$(git remote get-url origin)
+            git remote set-url origin "${ORIGIN_URL/https:\/\//https:\/\/${{ github.token }}@}"
+            git push origin $(git branch --show-current) --force-with-lease
           fi
 
-      - name: Sync/Rebase on Upstream
-        uses: archiemeng/rebase-upstream-action@master
+      - name: Update lindroid-drm-loopback from Upstream
+        run: |
+          git -C ${{ env.KERNEL_DIR }}/drivers/lindroid-drm fetch -a -t
+          git -C ${{ env.KERNEL_DIR }}/drivers/lindroid-drm checkout origin/master
+
+      - uses: archiemeng/rebase-upstream-action@master
         with:
           branch: ${{ github.ref_name }}
           depth: 0
 
+      - name: Get current hash
+        id: get-current-hash
+        run: echo "cur_hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
       - name: Trigger Build Workflow if Patch Updated
-        if: ${{ steps.apply_patch.outputs.patch_hash != '' }}
         uses: benc-uk/workflow-dispatch@v1.2.4
+        if: ${{ steps.get-initial-hash.outputs.init_hash != steps.get-current-hash.outputs.cur_hash }}
         with:
           workflow: build.yml
