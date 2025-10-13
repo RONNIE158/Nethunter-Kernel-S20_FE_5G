@@ -1,4 +1,4 @@
-name: Sinkron/Rebase ke Upstream
+name: Terapkan Patch Lindroid-DRM-Loopback
 on:
   schedule:
     - cron: "0 0 * * *"  # dijalankan setiap hari jam 00:00 UTC
@@ -8,64 +8,54 @@ permissions:
   contents: write
 
 jobs:
-  sync:
+  apply-lindroid-drm:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repositori
+      - name: Checkout repositori kernel
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0     # ambil seluruh riwayat commit agar bisa rebase
+          fetch-depth: 0     # ambil seluruh riwayat commit agar commit/push aman
           submodules: true   # update juga submodule
 
       - name: Ambil hash commit awal
         id: get-initial-hash
         run: |
-          # Menyimpan hash commit awal agar bisa dibandingkan nanti
+          # Simpan hash commit awal untuk dibandingkan nanti
           echo "init_hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - name: Konfigurasi Git untuk Actions
         run: |
-          # Mengatur user/email untuk commit otomatis
+          # Atur user/email untuk commit otomatis
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name  "GitHub Actions"
 
-      - name: Ambil update lindroid-drm-loopback
+      - name: Ambil patch/commit terbaru Lindroid-DRM-Loopback
         run: |
           # Fetch semua branch dan tag dari submodule
           git -C drivers/lindroid-drm fetch --all --tags
-
-      - name: Checkout branch master lindroid-drm-loopback
-        run: |
-          # Pastikan submodule berada di commit terbaru dari origin/master
+          # Checkout ke branch master terbaru
           git -C drivers/lindroid-drm checkout origin/master
 
-      - name: Commit update lindroid-drm-loopback jika ada perubahan
+      - name: Terapkan patch Lindroid-DRM-Loopback ke kernel
         run: |
-          # Cek apakah ada perubahan di submodule
+          # Jika ada perubahan di submodule, commit ke kernel
           if [ -n "$(git status --porcelain drivers/lindroid-drm)" ]; then
             git add drivers/lindroid-drm
-            git commit -m "Update lindroid-drm-loopback"
+            git commit -m "Terapkan patch terbaru dari lindroid-drm-loopback"
           else
-            echo "Tidak ada perubahan di lindroid-drm-loopback"
-          fi
+            echo "Tidak ada perubahan patch baru dari lindroid-drm-loopback"
 
-      - name: Push update ke origin
+      - name: Push perubahan ke origin
         run: |
-          # Set URL origin agar bisa push pakai token
+          # Gunakan token untuk push
           ORIGIN_URL=$(git remote get-url origin)
           git remote set-url origin "${ORIGIN_URL/https:\/\//https:\/\/${{ github.token }}@}"
           git push origin $(git branch --show-current) --force-with-lease
 
-      - name: Rebase branch saat ini ke upstream
-        uses: archiemeng/rebase-upstream-action@v1.5
-        with:
-          branch: ${{ github.ref_name }}  # branch yang akan direbase
-          depth: 0                        # ambil semua riwayat commit
-
       - name: Ambil hash commit saat ini
         id: get-current-hash
         run: |
-          # Menyimpan hash commit terbaru untuk dibandingkan
+          # Simpan hash commit terbaru untuk dibandingkan
           echo "cur_hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - name: Jalankan workflow build jika ada perubahan
